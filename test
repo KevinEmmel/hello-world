@@ -1,16 +1,16 @@
 &ANALYZE-SUSPEND _VERSION-NUMBER UIB_v8r12 GUI
 &ANALYZE-RESUME
-/* Connected Databases 
+/* Connected Databases
           platte           PROGRESS
 */
 &Scoped-define WINDOW-NAME wn-ship_details
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CUSTOM _DEFINITIONS wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CUSTOM _DEFINITIONS wn-ship_details
 /*------------------------------------------------------------------------
 
   File: explship.w
 
   Description: Display the shipment detail records
-                                          
+
   Author: John Mordeson
 
   Created: 08/15/94 -  8:23 am
@@ -56,7 +56,6 @@ Remove unused procedure parameters & procedures
 {ic/wmssendpott.i}
 {ic/wmssendrmtt.i}
 {common/ttonholdtbr.i}
-{paramsott.i}
 
 /* Parameters Definitions ---                                           */
 
@@ -64,8 +63,8 @@ DEFINE INPUT PARAMETER ip-shiphead_rec   AS RECID     NO-UNDO.
 DEFINE INPUT PARAMETER ip-calling_module AS HANDLE    NO-UNDO.
 DEFINE INPUT PARAMETER ip-context        AS CHARACTER NO-UNDO.
 
-DEFINE VARIABLE goSecurityManager        AS sys.SecurityManager         NO-UNDO.
-DEFINE VARIABLE goSODetailModel          AS so.SODetailModel   NO-UNDO.
+DEFINE VARIABLE goSecurityManager        AS sys.SecurityManager   NO-UNDO.
+DEFINE VARIABLE goSODetailPresenter      AS so.SODetailPresenter  NO-UNDO.
 
 DEFINE VARIABLE g-called_by              AS HANDLE    NO-UNDO.
 DEFINE VARIABLE g-calling_module         AS HANDLE    NO-UNDO.
@@ -114,7 +113,6 @@ DEFINE VARIABLE giShiptoSeq            AS INTEGER   NO-UNDO INIT ?.
 DEFINE VARIABLE gdDetailTallyQty       AS DECIMAL   NO-UNDO INIT ?.
 DEFINE VARIABLE g-detail_qty           AS DECIMAL   NO-UNDO INIT ?.
 DEFINE VARIABLE grCurrentRECID         AS RECID     NO-UNDO.
-DEFINE VARIABLE grOrigRECID            AS RECID     NO-UNDO.
 DEFINE VARIABLE g-context              AS CHARACTER NO-UNDO.
 DEFINE VARIABLE g-row                  AS INTEGER   NO-UNDO.
 DEFINE VARIABLE gcCurrentShipmentRecID AS RECID     NO-UNDO.
@@ -202,19 +200,31 @@ DEFINE VARIABLE glAllowReviewStatusDtl   AS   LOGICAL        NO-UNDO.
 DEFINE VARIABLE glUseConsignForCust      AS   LOGICAL        NO-UNDO INIT NO.
 
 DEFINE VARIABLE gcCurrentDriverOnHeader  AS   CHARACTER      NO-UNDO INIT "".
+DEFINE VARIABLE gcDummy                  AS   CHARACTER      NO-UNDO INIT "".
 
-DEFINE VARIABLE gcDummy                  AS CHARACTER        NO-UNDO INIT "".
-DEFINE VARIABLE glAllowPCRefUOM          AS LOGICAL          NO-UNDO.
-DEFINE VARIABLE glAllowUnitUOM           AS LOGICAL          NO-UNDO.
-DEFINE VARIABLE glLineUpdateMode         AS LOGICAL          NO-UNDO.
-DEFINE VARIABLE gchDimensionsComboBox    AS COM-HANDLE       NO-UNDO.
-DEFINE VARIABLE glFromBtcommit           AS LOGICAL          NO-UNDO.
+/* line update mode */
+DEFINE VARIABLE grLineUpdateRECID         AS RECID            NO-UNDO.
+DEFINE VARIABLE grOrigLineUpdateRECID     AS RECID            NO-UNDO.
+DEFINE VARIABLE giLineUpdateRow           AS INTEGER          NO-UNDO.
+
+DEFINE VARIABLE glAllowPCRefUOM           AS LOGICAL          NO-UNDO.
+DEFINE VARIABLE glAllowUnitUOM            AS LOGICAL          NO-UNDO.
+DEFINE VARIABLE glLineUpdateMode          AS LOGICAL          NO-UNDO.
+DEFINE VARIABLE glSaveLineUpdateChanges   AS LOGICAL          NO-UNDO.
+DEFINE VARIABLE giLineUpdateSequence      AS INTEGER          NO-UNDO.
+DEFINE VARIABLE gcNextSaveStep            AS CHARACTER        NO-UNDO.
+
+DEFINE VARIABLE giOrigLineUpdateItemPtr   AS DECIMAL          NO-UNDO.
+DEFINE VARIABLE gdOrigLineUpdateQty       AS DECIMAL          NO-UNDO.
+DEFINE VARIABLE gcOrigLineUpdateUOM       AS CHARACTER        NO-UNDO.
+DEFINE VARIABLE gcOrigLineUpdateDimension AS CHARACTER        NO-UNDO.
+DEFINE VARIABLE gdOrigLineUpdatePrice     AS DECIMAL          NO-UNDO.
+DEFINE VARIABLE gcOrigLineUpdatePriceUOM  AS CHARACTER        NO-UNDO.
+DEFINE VARIABLE gdOrigLineUpdateExtPrice  AS DECIMAL          NO-UNDO.
 
 DEFINE NEW GLOBAL SHARED VARIABLE ghPayments         AS HANDLE NO-UNDO.
 
 DEFINE BUFFER bfSOHeader        FOR so_header.
-
-DEFINE VARIABLE lwasinrowentry AS LOGICAL NO-UNDO.
 
 /* Local Variable Definitions ---                                       */
 {allwdefs.i}
@@ -237,6 +247,8 @@ DEFINE  MENU menu-main MENUBAR
 
 /*Include file that holds variable/temp-table definitions and common procedures used here and sishipdetailupd.p*/
 {so/explshipi.i}
+
+DEFINE BUFFER     blttship_details_line_update FOR temp-ship-details.
 
 DEFINE TEMP-TABLE temp-trans_message NO-UNDO LIKE trans_message.
 DEFINE TEMP-TABLE ttMessages         NO-UNDO LIKE messages.
@@ -416,7 +428,7 @@ DEFINE VARIABLE gcPodAdjustmentGUID AS CHARACTER NO-UNDO.
 &ANALYZE-RESUME
 
 
-&ANALYZE-SUSPEND _UIB-PREPROCESSOR-BLOCK 
+&ANALYZE-SUSPEND _UIB-PREPROCESSOR-BLOCK
 
 /* ********************  Preprocessor Definitions  ******************** */
 
@@ -431,8 +443,8 @@ DEFINE VARIABLE gcPodAdjustmentGUID AS CHARACTER NO-UNDO.
 &Scoped-define INTERNAL-TABLES temp-ship-details BL-shipments_header
 
 /* Definitions for BROWSE br-shipdetails                                */
-&Scoped-define FIELDS-IN-QUERY-br-shipdetails temp-ship-details.dDisplayQty temp-ship-details.cDisplayUOM temp-ship-details.need-spec temp-ship-details.item temp-ship-details.size temp-ship-details.description temp-ship-details.sequence temp-ship-details.haz-msg temp-ship-details.review_status temp-ship-details.pod_qty_adjustments temp-ship-details.disp_price temp-ship-details.disp_price-uom temp-ship-details.discount temp-ship-details.ext_price (IF g-cost_toggle = 3 THEN STRING(temp-ship-details.dispgm, "->>9.99") ELSE "") (IF g-cost_toggle = 3 THEN STRING(temp-ship-details.disp_cost, "-ZZZZZZ9.9999") ELSE "") (IF g-cost_toggle = 3 THEN STRING(temp-ship-details.dispcostdesig, "X(2)") ELSE " ") temp-ship-details.oth_chg_no_gm temp-ship-details.oth_chg_gm temp-ship-details.oth_cost_no_gm temp-ship-details.oth_cost_gm temp-ship-details.linked_po temp-ship-details.group_id temp-ship-details.group_header temp-ship-details.cWoId   
-&Scoped-define ENABLED-FIELDS-IN-QUERY-br-shipdetails temp-ship-details.dDisplayQty temp-ship-details.disp_price temp-ship-details.disp_price-uom temp-ship-details.ext_price   
+&Scoped-define FIELDS-IN-QUERY-br-shipdetails temp-ship-details.dDisplayQty temp-ship-details.cDisplayUOM temp-ship-details.need-spec temp-ship-details.item temp-ship-details.size temp-ship-details.description temp-ship-details.sequence temp-ship-details.haz-msg temp-ship-details.review_status temp-ship-details.pod_qty_adjustments temp-ship-details.disp_price temp-ship-details.disp_price-uom temp-ship-details.discount temp-ship-details.ext_price (IF g-cost_toggle = 3 THEN STRING(temp-ship-details.dispgm, "->>9.99") ELSE "") (IF g-cost_toggle = 3 THEN STRING(temp-ship-details.disp_cost, "-ZZZZZZ9.9999") ELSE "") (IF g-cost_toggle = 3 THEN STRING(temp-ship-details.dispcostdesig, "X(2)") ELSE " ") temp-ship-details.oth_chg_no_gm temp-ship-details.oth_chg_gm temp-ship-details.oth_cost_no_gm temp-ship-details.oth_cost_gm temp-ship-details.linked_po temp-ship-details.group_id temp-ship-details.group_header temp-ship-details.cWoId
+&Scoped-define ENABLED-FIELDS-IN-QUERY-br-shipdetails temp-ship-details.dDisplayQty temp-ship-details.disp_price temp-ship-details.disp_price-uom temp-ship-details.ext_price
 &Scoped-define ENABLED-TABLES-IN-QUERY-br-shipdetails temp-ship-details
 &Scoped-define FIRST-ENABLED-TABLE-IN-QUERY-br-shipdetails temp-ship-details
 &Scoped-define SELF-NAME br-shipdetails
@@ -454,23 +466,23 @@ DEFINE VARIABLE gcPodAdjustmentGUID AS CHARACTER NO-UNDO.
 
 
 /* Standard List Definitions                                            */
-&Scoped-Define ENABLED-OBJECTS RECT-55 RECT-82 RECT-54 btSave btShipDtlInfo ~
-btDisplayOrder btDispatch btHdrMsgs btCancelStaging btCustInfo fi-ship_date ~
-btCalendarDt fiExpDate btCalendarExpDt btRoute fi-route tbHold fi-stop ~
-btDriverLoc fiDriver fi-adf fiProNumber tbDispAllocChgCost btAdd ~
-bt-update_detail bt-delete btViewOthChgCst btSelectLoc bt-commit ~
-btSpecifyTags btViewMsgs btSerNumEnt btSelectAll btUnitData btPodAccept ~
-btPodReject cbDisplayUOM br-shipdetails fiInvoiceDate btCalendarInvDt ~
-cbStatus cbInvoicePeriod cbInvoiceYear btDefault tbPrintDelvTick bt-prev ~
-bt-next btUpdateStatus fistagingstatuslbl fiStagingstatus fiCurrencyLbl ~
-fi-asterisk fiProNumberLbl fiInvoiceDateLabel fiStatusLabel 
-&Scoped-Define DISPLAYED-OBJECTS fi-cust_id fi-shipto fi-order_date ~
-fi-ship_date fiExpDate fiCredStat fi-route tbHold fi-stop fiReviewStatus ~
-fiDriver fiEstimatedProfit fiCurrency fi-adf fiProNumber tbDispAllocChgCost ~
-cbDisplayUOM fiInvoiceDate cbStatus cbInvoicePeriod cbInvoiceYear ~
-tbPrintDelvTick fistagingstatuslbl fiStagingstatus fiReviewStatusLbl ~
-fiCurrencyLbl fi-asterisk fiProNumberLbl fi-adf-message fiInvPeriodText ~
-fiStatusText fiInvoiceDateLabel fiStatusLabel 
+&Scoped-Define ENABLED-OBJECTS btSave btShipDtlInfo btDisplayOrder ~
+fiCurrencyLbl btDispatch btHdrMsgs btCancelStaging btCustInfo ~
+fiStagingstatus fi-ship_date btCalendarDt fiExpDate btCalendarExpDt ~
+fi-route btRoute tbHold fi-stop fiDriver btDriverLoc fi-adf fiProNumber ~
+tbDispAllocChgCost btAdd bt-update_detail bt-delete btViewOthChgCst ~
+fistagingstatuslbl btSelectLoc btSpecifyTags btViewMsgs btSerNumEnt ~
+btSelectAll btUnitData btPodAccept btPodReject cbDisplayUOM fi-asterisk ~
+br-shipdetails fiInvoiceDate btCalendarInvDt cbInvoicePeriod cbInvoiceYear ~
+btDefault cbStatus tbPrintDelvTick btUpdateStatus bt-prev bt-next ~
+fiStatusLabel fiInvoiceDateLabel fiProNumberLbl RECT-82 RECT-54
+&Scoped-Define DISPLAYED-OBJECTS fiCurrencyLbl fiStagingstatus fi-ship_date ~
+fiExpDate fiCredStat fi-route tbHold fi-stop fi-cust_id fiReviewStatus ~
+fiDriver fiEstimatedProfit fi-adf fiProNumber tbDispAllocChgCost ~
+fistagingstatuslbl cbDisplayUOM fi-asterisk fiInvoiceDate cbInvoicePeriod ~
+cbInvoiceYear cbStatus tbPrintDelvTick fi-shipto fiCurrency fi-order_date ~
+fiStatusText fi-adf-message fiInvPeriodText fiStatusLabel ~
+fiInvoiceDateLabel fiReviewStatusLbl fiProNumberLbl
 
 /* Custom List Definitions                                              */
 /* List-1,List-2,List-3,List-4,List-5,List-6                            */
@@ -478,458 +490,418 @@ fiStatusText fiInvoiceDateLabel fiStatusLabel
 /* _UIB-PREPROCESSOR-BLOCK-END */
 &ANALYZE-RESUME
 
-
 /* ************************  Function Prototypes ********************** */
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _FUNCTION-FORWARD PricingIsEditableForDetail wn-ship_details 
-FUNCTION PricingIsEditableForDetail RETURNS LOGICAL
+
+
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _FUNCTION-FORWARD CancelLineUpdateChanges wn-ship_details
+FUNCTION CancelLineUpdateChanges RETURNS LOGICAL 
   (  ) FORWARD.
 
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
 
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _FUNCTION-FORWARD PricingIsEditableForDetail wn-ship_details
+FUNCTION PricingIsEditableForDetail RETURNS LOGICAL 
+  (  ) FORWARD.
+
+/* _UIB-CODE-BLOCK-END */
+&ANALYZE-RESUME
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _FUNCTION-FORWARD UnsavedLineUpdateChanges wn-ship_details
+FUNCTION UnsavedLineUpdateChanges RETURNS LOGICAL 
+  ( INPUT ipcSOIDSysid    AS CHARACTER,
+    INPUT ipiSOID         AS INTEGER,
+    INPUT ipiSequence     AS INTEGER,
+    INPUT ipiShipmentNum  AS INTEGER ) FORWARD.
+
+/* _UIB-CODE-BLOCK-END */
+&ANALYZE-RESUME
+
 /* ***********************  Control Definitions  ********************** */
 
 /* Define the widget handle for the window                              */
 DEFINE VAR wn-ship_details AS WIDGET-HANDLE NO-UNDO.
 
-/* Definitions of handles for OCX Containers                            */
-DEFINE VARIABLE CtrlFrame AS WIDGET-HANDLE NO-UNDO.
-DEFINE VARIABLE chCtrlFrame AS COMPONENT-HANDLE NO-UNDO.
-
 /* Definitions of the field level widgets                               */
-DEFINE BUTTON bt-locate 
-     IMAGE-UP FILE "images\locate.ico":U
-     IMAGE-INSENSITIVE FILE "images\locate_g.ico":U
-     LABEL "Btn 1":L 
-     SIZE 4.8 BY 1.1.
-
-DEFINE BUTTON btCancelDetails 
-     LABEL "&Cancel":L 
-     SIZE 16 BY 1.14.
-
-DEFINE BUTTON btPriceUOMDetails 
-     LABEL "UOM":L 
-     SIZE 7 BY 1.
-
-DEFINE BUTTON btSaveDetails 
-     LABEL "&Save":L 
-     SIZE 16 BY 1.14.
-
-DEFINE BUTTON btSaveNextDetails 
-     LABEL "Save && &Next":L 
-     SIZE 16 BY 1.14.
-
-DEFINE BUTTON btUOMDetails 
-     LABEL "UOM":L 
-     SIZE 7 BY 1.
-
-DEFINE VARIABLE fiExtPrice AS DECIMAL FORMAT "->>>,>>>,>>9.99":U INITIAL -999999999.99 
-     VIEW-AS FILL-IN 
-     SIZE 20 BY 1
-     BGCOLOR 15  NO-UNDO.
-
-DEFINE VARIABLE fiItem AS CHARACTER FORMAT "X(40)":U 
-     VIEW-AS FILL-IN 
-     SIZE 26.6 BY 1 TOOLTIP "Enter item, cross reference or keywords to locate the item"
-     BGCOLOR 15 FGCOLOR 0  NO-UNDO.
-
-DEFINE VARIABLE fiPrice AS DECIMAL FORMAT "->>>,>>9.9999":U INITIAL 0 
-     VIEW-AS FILL-IN 
-     SIZE 20 BY 1
-     BGCOLOR 15  NO-UNDO.
-
-DEFINE VARIABLE fiQty AS DECIMAL FORMAT "->>>,>>>,>>9.9999" INITIAL 0 
-     VIEW-AS FILL-IN 
-     SIZE 26.6 BY 1
-     BGCOLOR 15 FGCOLOR 0  NO-UNDO.
-
-DEFINE BUTTON bt-commit 
-     IMAGE-UP FILE "images/specify_commit.ico":U
-     IMAGE-INSENSITIVE FILE "images/specify_commit_g.ico":U
-     LABEL "Commit" 
-     SIZE 4.8 BY 1.1 TOOLTIP "Specify commit/uncommit".
-
-DEFINE BUTTON bt-delete 
+DEFINE BUTTON bt-delete
      IMAGE-UP FILE "images/delete.ico":U
      IMAGE-INSENSITIVE FILE "images/delete_g.ico":U
-     LABEL "Delete" 
+     LABEL "Delete"
      SIZE 4.8 BY 1.1 TOOLTIP "Delete item (Ctrl+D)".
 
-DEFINE BUTTON bt-next 
+DEFINE BUTTON bt-next
      IMAGE-UP FILE "images/next.ico":U
-     LABEL "":L 
+     LABEL "":L
      SIZE 4.8 BY 1.1.
 
-DEFINE BUTTON bt-prev 
+DEFINE BUTTON bt-prev
      IMAGE-UP FILE "images/prev.ico":U
-     LABEL "":L 
+     LABEL "":L
      SIZE 4.8 BY 1.1.
 
-DEFINE BUTTON bt-tallycalc 
+DEFINE BUTTON bt-tallycalc
      IMAGE-UP FILE "IMAGES/cal_btn_grid.ico":U NO-FOCUS
-     LABEL "Button 3" 
+     LABEL "Button 3"
      SIZE 4.2 BY .81.
 
-DEFINE BUTTON bt-update_detail 
+DEFINE BUTTON bt-update_detail
      IMAGE-UP FILE "images/edititem.ico":U
      IMAGE-INSENSITIVE FILE "images/edititem_g.ico":U
-     LABEL "Update" 
+     LABEL "Update"
      SIZE 4.8 BY 1.1 TOOLTIP "Update item".
 
-DEFINE BUTTON btAdd 
+DEFINE BUTTON btAdd
      IMAGE-UP FILE "images/plussign_inset.ico":U
      IMAGE-INSENSITIVE FILE "images/plussign_inset_g.ico":U
-     LABEL "Add" 
+     LABEL "Add"
      SIZE 4.8 BY 1.1 TOOLTIP "Add item (Ctrl+A)".
 
-DEFINE BUTTON btCalendarDt 
+DEFINE BUTTON btCalendarDt
      IMAGE-UP FILE "images/cbdown.ico":U
-     LABEL "Btn 4":L 
+     LABEL "Btn 4":L
      SIZE 3.8 BY 1.
 
-DEFINE BUTTON btCalendarExpDt 
+DEFINE BUTTON btCalendarExpDt
      IMAGE-UP FILE "images/cbdown.ico":U
-     LABEL "Btn 4":L 
+     LABEL "Btn 4":L
      SIZE 3.8 BY 1.
 
-DEFINE BUTTON btCalendarInvDt 
+DEFINE BUTTON btCalendarInvDt
      IMAGE-UP FILE "images/cbdown.ico":U
-     LABEL "Btn 4":L 
+     LABEL "Btn 4":L
      SIZE 4 BY 1.
 
-DEFINE BUTTON btCancelStaging 
+DEFINE BUTTON btCancelStaging
      IMAGE-UP FILE "images\delete":U
      IMAGE-INSENSITIVE FILE "images\delete_g":U
-     LABEL "&Cancel Staging":L 
+     LABEL "&Cancel Staging":L
      SIZE 4.8 BY 1.1 TOOLTIP "Delete shipment".
 
-DEFINE BUTTON btCustInfo 
+DEFINE BUTTON btCustInfo
      IMAGE-UP FILE "images/cust_infot.ico":U
      IMAGE-INSENSITIVE FILE "images/cust_infotgr.ico":U
-     LABEL "View Customer Info" 
+     LABEL "View Customer Info"
      SIZE 4.8 BY 1.1 TOOLTIP "View Customer Information".
 
-DEFINE BUTTON btDefault 
-     LABEL "Defau&lt" 
+DEFINE BUTTON btDefault
+     LABEL "Defau&lt"
      SIZE 12 BY 1.
 
-DEFINE BUTTON btDispatch 
+DEFINE BUTTON btDispatch
      IMAGE-UP FILE "images/dspch":U
      IMAGE-INSENSITIVE FILE "images/dspch_g":U
-     LABEL "":L 
+     LABEL "":L
      SIZE 4.8 BY 1.1 TOOLTIP "Maintain dispatch records".
 
-DEFINE BUTTON btDisplayOrder 
+DEFINE BUTTON btDisplayOrder
      IMAGE-UP FILE "images/view_so.ico":U
      IMAGE-INSENSITIVE FILE "images/view_so_g.ico":U
-     LABEL "" 
+     LABEL ""
      SIZE 4.8 BY 1.1 TOOLTIP "Display order".
 
-DEFINE BUTTON btDriverLoc 
+DEFINE BUTTON btDriverLoc
      IMAGE-UP FILE "images/locate.ico":U
      IMAGE-INSENSITIVE FILE "images/locate_g.ico":U
-     LABEL "" 
+     LABEL ""
      SIZE 4.8 BY 1.1.
 
-DEFINE BUTTON btHdrMsgs 
+DEFINE BUTTON btHdrMsgs
      IMAGE-UP FILE "images\msg_y":U
      IMAGE-INSENSITIVE FILE "images\msg_g":U
-     LABEL "Message":L 
+     LABEL "Message":L
      SIZE 4.8 BY 1.1 TOOLTIP "Create message".
 
-DEFINE BUTTON btnImages 
+DEFINE BUTTON btnImages
      IMAGE-UP FILE "images\pod_photos":U
      IMAGE-INSENSITIVE FILE "images\pod_photos_g":U
-     LABEL "&View Images":L 
+     LABEL "&View Images":L
      SIZE 4.8 BY 1.1 TOOLTIP "View POD images for shipment".
 
-DEFINE BUTTON btPodAccept 
-     LABEL "&Accept POD Changes" 
+DEFINE BUTTON btPodAccept
+     LABEL "&Accept POD Changes"
      SIZE 23.4 BY 1.1.
 
-DEFINE BUTTON btPodReject 
-     LABEL "&Reject POD Changes" 
+DEFINE BUTTON btPodReject
+     LABEL "&Reject POD Changes"
      SIZE 23.4 BY 1.1.
 
-DEFINE BUTTON btRoute 
+DEFINE BUTTON btRoute
      IMAGE-UP FILE "images/locate.ico":U
-     LABEL "" 
+     LABEL ""
      SIZE 4.8 BY 1.1.
 
-DEFINE BUTTON btSave 
+DEFINE BUTTON btSave
      IMAGE-UP FILE "images/save.ico":U
-     LABEL "" 
+     LABEL ""
      SIZE 4.8 BY 1.1 TOOLTIP "Save header (Ctrl+S)".
 
-DEFINE BUTTON btSelectAll 
+DEFINE BUTTON btSelectAll
      IMAGE-UP FILE "images/select_all.ico":U
      IMAGE-INSENSITIVE FILE "images/select_all_g.ico":U
-     LABEL "Select all (Ctrl+L)" 
+     LABEL "Select all (Ctrl+L)"
      SIZE 4.8 BY 1.1 TOOLTIP "Select all (Ctrl+L)".
 
-DEFINE BUTTON btSelectLoc 
+DEFINE BUTTON btSelectLoc
      IMAGE-UP FILE "images/specify_location.ico":U
-     LABEL "" 
+     LABEL ""
      SIZE 4.8 BY 1.1 TOOLTIP "Select location".
 
-DEFINE BUTTON btSerNumEnt 
+DEFINE BUTTON btSerNumEnt
      IMAGE-UP FILE "images/sn_entry.ico":U
      IMAGE-INSENSITIVE FILE "images/sn_entry_g.ico":U
-     LABEL "" 
+     LABEL ""
      SIZE 4.8 BY 1.1 TOOLTIP "Serial number entry".
 
-DEFINE BUTTON btShipDtlInfo 
+DEFINE BUTTON btShipDtlInfo
      IMAGE-UP FILE "images/stage_info.ico":U
      IMAGE-INSENSITIVE FILE "images/stage_info_g.ico":U
-     LABEL "" 
+     LABEL ""
      SIZE 4.8 BY 1.1 TOOLTIP "View shipment information details".
 
-DEFINE BUTTON btSpecifyTags 
+DEFINE BUTTON btSpecifyTags
      IMAGE-UP FILE "images/specify_tags.ico":U
      IMAGE-INSENSITIVE FILE "images/specify_tags_g.ico":U
-     LABEL "" 
+     LABEL ""
      SIZE 4.8 BY 1.1 TOOLTIP "Specify tags to commit".
 
-DEFINE BUTTON btUnitData 
+DEFINE BUTTON btUnitData
      IMAGE-UP FILE "images/unit_data.ico":U
      IMAGE-INSENSITIVE FILE "images/unit_data_g.ico":U
-     LABEL "" 
+     LABEL ""
      SIZE 4.8 BY 1.1 TOOLTIP "Display unit data".
 
-DEFINE BUTTON btUpdateStatus 
-     LABEL "&Update Status":L 
+DEFINE BUTTON btUpdateStatus
+     LABEL "&Update Status":L
      SIZE 16 BY 1.14.
 
-DEFINE BUTTON btViewMsgs 
+DEFINE BUTTON btViewMsgs
      IMAGE-UP FILE "images/msg_n.ico":U
      IMAGE-INSENSITIVE FILE "images/msg_g.ico":U
-     LABEL "" 
+     LABEL ""
      SIZE 4.8 BY 1.1 TOOLTIP "View messages".
 
-DEFINE BUTTON btViewOthChgCst 
+DEFINE BUTTON btViewOthChgCst
      IMAGE-UP FILE "images/view_order_chg.ico":U
      IMAGE-INSENSITIVE FILE "images/view_order_chg_g.ico":U
-     LABEL "" 
+     LABEL ""
      SIZE 4.8 BY 1.1 TOOLTIP "Override/view other charge/cost".
 
-DEFINE VARIABLE cbDisplayUOM AS CHARACTER FORMAT "X(256)":U INITIAL "Picking UOM" 
+DEFINE VARIABLE cbDisplayUOM AS CHARACTER FORMAT "X(256)":U INITIAL "Picking UOM"
      VIEW-AS COMBO-BOX INNER-LINES 5
-     LIST-ITEMS "Delivery UOM","Invoice UOM","Order UOM","Picking UOM" 
+     LIST-ITEMS "Delivery UOM","Invoice UOM","Order UOM","Picking UOM"
      DROP-DOWN-LIST
      SIZE 33 BY 1 NO-UNDO.
 
-DEFINE VARIABLE cbInvoicePeriod AS CHARACTER FORMAT "X(20)":U 
+DEFINE VARIABLE cbInvoicePeriod AS CHARACTER FORMAT "X(20)":U
      VIEW-AS COMBO-BOX INNER-LINES 12
-     LIST-ITEMS "1 - January","2 - February","3 - March","4 - April","5 - May","6 - June","7 - July","8 - August","9 - September","10 - October","11 - November","12 - December" 
+     LIST-ITEMS "1 - January","2 - February","3 - March","4 - April","5 - May","6 - June","7 - July","8 - August","9 - September","10 - October","11 - November","12 - December"
      DROP-DOWN-LIST
      SIZE 22 BY 1 NO-UNDO.
 
-DEFINE VARIABLE cbInvoiceYear AS CHARACTER FORMAT "X(8)":U INITIAL "0" 
+DEFINE VARIABLE cbInvoiceYear AS CHARACTER FORMAT "X(8)":U INITIAL "0"
      VIEW-AS COMBO-BOX INNER-LINES 5
      DROP-DOWN-LIST
      SIZE 15 BY 1 NO-UNDO.
 
-DEFINE VARIABLE cbStatus AS CHARACTER FORMAT "X(256)":U 
+DEFINE VARIABLE cbStatus AS CHARACTER FORMAT "X(256)":U
      VIEW-AS COMBO-BOX INNER-LINES 5
-     LIST-ITEMS "Item 1" 
+     LIST-ITEMS "Item 1"
      DROP-DOWN-LIST
      SIZE 16 BY 1 NO-UNDO.
 
-DEFINE VARIABLE fi-address AS CHARACTER FORMAT "X(31)":U 
-     VIEW-AS FILL-IN 
+DEFINE VARIABLE fi-address AS CHARACTER FORMAT "X(31)":U
+     VIEW-AS FILL-IN
      SIZE 53 BY 1
      BGCOLOR 15 FGCOLOR 0  NO-UNDO.
 
-DEFINE VARIABLE fi-address_2 AS CHARACTER FORMAT "X(31)":U 
-     VIEW-AS FILL-IN 
+DEFINE VARIABLE fi-address_2 AS CHARACTER FORMAT "X(31)":U
+     VIEW-AS FILL-IN
      SIZE 53 BY 1
      BGCOLOR 15 FGCOLOR 0  NO-UNDO.
 
-DEFINE VARIABLE fi-adf AS DECIMAL FORMAT "-ZZZ,ZZZ,ZZZ,ZZ9.99":U INITIAL 0 
-     VIEW-AS FILL-IN NATIVE 
+DEFINE VARIABLE fi-adf AS DECIMAL FORMAT "-ZZZ,ZZZ,ZZZ,ZZ9.99":U INITIAL 0
+     VIEW-AS FILL-IN NATIVE
      SIZE 28 BY 1
      BGCOLOR 15 FGCOLOR 0 FONT 14 NO-UNDO.
 
-DEFINE VARIABLE fi-adf-message AS CHARACTER FORMAT "X(50)":U INITIAL "* ADF overridden on the sales order" 
-      VIEW-AS TEXT 
+DEFINE VARIABLE fi-adf-message AS CHARACTER FORMAT "X(50)":U INITIAL "* ADF overridden on the sales order"
+      VIEW-AS TEXT
      SIZE 48.4 BY .62
      FONT 17 NO-UNDO.
 
-DEFINE VARIABLE fi-asterisk AS CHARACTER FORMAT "X(1)":U 
-      VIEW-AS TEXT 
+DEFINE VARIABLE fi-asterisk AS CHARACTER FORMAT "X(1)":U
+      VIEW-AS TEXT
      SIZE 1 BY .95 NO-UNDO.
 
-DEFINE VARIABLE fi-city AS CHARACTER FORMAT "X(21)":U 
-     VIEW-AS FILL-IN 
+DEFINE VARIABLE fi-city AS CHARACTER FORMAT "X(21)":U
+     VIEW-AS FILL-IN
      SIZE 30 BY 1
      BGCOLOR 15 FGCOLOR 0  NO-UNDO.
 
-DEFINE VARIABLE fi-cust AS CHARACTER FORMAT "X(31)":U 
-     VIEW-AS FILL-IN 
+DEFINE VARIABLE fi-cust AS CHARACTER FORMAT "X(31)":U
+     VIEW-AS FILL-IN
      SIZE 53 BY 1
      BGCOLOR 15 FGCOLOR 0  NO-UNDO.
 
-DEFINE VARIABLE fi-cust_id AS CHARACTER FORMAT "X(12)":U 
-     VIEW-AS FILL-IN 
+DEFINE VARIABLE fi-cust_id AS CHARACTER FORMAT "X(12)":U
+     VIEW-AS FILL-IN
      SIZE 19 BY 1
      BGCOLOR 15 FGCOLOR 0  NO-UNDO.
 
-DEFINE VARIABLE fi-order_date AS CHARACTER FORMAT "X(8)":U 
-     VIEW-AS FILL-IN 
+DEFINE VARIABLE fi-order_date AS CHARACTER FORMAT "X(8)":U
+     VIEW-AS FILL-IN
      SIZE 33 BY 1
      BGCOLOR 15 FGCOLOR 0  NO-UNDO.
 
-DEFINE VARIABLE fi-route AS CHARACTER FORMAT "X(256)":U 
-     VIEW-AS FILL-IN NATIVE 
+DEFINE VARIABLE fi-route AS CHARACTER FORMAT "X(256)":U
+     VIEW-AS FILL-IN NATIVE
      SIZE 28 BY 1
      BGCOLOR 15 FGCOLOR 0  NO-UNDO.
 
-DEFINE VARIABLE fi-shipto AS CHARACTER FORMAT "X(5)":U 
-     VIEW-AS FILL-IN 
+DEFINE VARIABLE fi-shipto AS CHARACTER FORMAT "X(5)":U
+     VIEW-AS FILL-IN
      SIZE 8.4 BY 1
      BGCOLOR 15 FGCOLOR 0  NO-UNDO.
 
-DEFINE VARIABLE fi-ship_date AS DATE FORMAT "99/99/99":U 
-     VIEW-AS FILL-IN NATIVE 
+DEFINE VARIABLE fi-ship_date AS DATE FORMAT "99/99/99":U
+     VIEW-AS FILL-IN NATIVE
      SIZE 29 BY 1
      BGCOLOR 15 FGCOLOR 0  NO-UNDO.
 
-DEFINE VARIABLE fi-ship_num AS INTEGER FORMAT ">>>>>>9":U INITIAL 0 
-     VIEW-AS FILL-IN 
+DEFINE VARIABLE fi-ship_num AS INTEGER FORMAT ">>>>>>9":U INITIAL 0
+     VIEW-AS FILL-IN
      SIZE 33 BY 1
      BGCOLOR 15 FGCOLOR 0  NO-UNDO.
 
-DEFINE VARIABLE fi-soid AS INTEGER FORMAT ">>>>>>>>>>9":U INITIAL 0 
-     VIEW-AS FILL-IN 
+DEFINE VARIABLE fi-soid AS INTEGER FORMAT "{&gcPartialTranID}":U INITIAL 0
+     VIEW-AS FILL-IN
      SIZE 33 BY 1
      BGCOLOR 15 FGCOLOR 0  NO-UNDO.
 
-DEFINE VARIABLE fi-state AS CHARACTER FORMAT "X(3)":U 
-     VIEW-AS FILL-IN 
+DEFINE VARIABLE fi-state AS CHARACTER FORMAT "X(3)":U
+     VIEW-AS FILL-IN
      SIZE 5 BY 1
      BGCOLOR 15 FGCOLOR 0  NO-UNDO.
 
-DEFINE VARIABLE fi-stop AS INTEGER FORMAT ">>>>>9":U INITIAL 0 
-     VIEW-AS FILL-IN NATIVE 
+DEFINE VARIABLE fi-stop AS INTEGER FORMAT ">>>>>9":U INITIAL 0
+     VIEW-AS FILL-IN NATIVE
      SIZE 33 BY 1
      BGCOLOR 15 FGCOLOR 0  NO-UNDO.
 
-DEFINE VARIABLE fi-zip AS CHARACTER FORMAT "X(11)":U 
-     VIEW-AS FILL-IN 
+DEFINE VARIABLE fi-zip AS CHARACTER FORMAT "X(11)":U
+     VIEW-AS FILL-IN
      SIZE 16 BY 1
      BGCOLOR 15 FGCOLOR 0  NO-UNDO.
 
-DEFINE VARIABLE fiCredStat AS CHARACTER FORMAT "X(12)":U 
-     VIEW-AS FILL-IN 
+DEFINE VARIABLE fiCredStat AS CHARACTER FORMAT "X(12)":U
+     VIEW-AS FILL-IN
      SIZE 33 BY 1
      BGCOLOR 15 FGCOLOR 0  NO-UNDO.
 
-DEFINE VARIABLE fiCurrency AS CHARACTER FORMAT "X(256)":U 
-     VIEW-AS FILL-IN 
+DEFINE VARIABLE fiCurrency AS CHARACTER FORMAT "X(256)":U
+     VIEW-AS FILL-IN
      SIZE 33 BY 1
      BGCOLOR 15  NO-UNDO.
 
-DEFINE VARIABLE fiCurrencyLbl AS CHARACTER FORMAT "X(256)":U INITIAL "Currency" 
-      VIEW-AS TEXT 
+DEFINE VARIABLE fiCurrencyLbl AS CHARACTER FORMAT "X(256)":U INITIAL "Currency"
+      VIEW-AS TEXT
      SIZE 11.6 BY 1 NO-UNDO.
 
-DEFINE VARIABLE fiDriver AS CHARACTER FORMAT "x(12)" 
-     VIEW-AS FILL-IN 
+DEFINE VARIABLE fiDriver AS CHARACTER FORMAT "x(12)"
+     VIEW-AS FILL-IN
      SIZE 28 BY 1
      BGCOLOR 15 FGCOLOR 0  NO-UNDO.
 
-DEFINE VARIABLE fiEstimatedProfit AS DECIMAL FORMAT "-ZZZ,ZZZ,ZZZ,ZZ9.99":U INITIAL 0 
-     VIEW-AS FILL-IN 
+DEFINE VARIABLE fiEstimatedProfit AS DECIMAL FORMAT "-ZZZ,ZZZ,ZZZ,ZZ9.99":U INITIAL 0
+     VIEW-AS FILL-IN
      SIZE 28 BY 1
      BGCOLOR 15 FONT 14 NO-UNDO.
 
-DEFINE VARIABLE fiExpDate AS DATE FORMAT "99/99/99":U 
-     VIEW-AS FILL-IN NATIVE 
+DEFINE VARIABLE fiExpDate AS DATE FORMAT "99/99/99":U
+     VIEW-AS FILL-IN NATIVE
      SIZE 29 BY 1
      BGCOLOR 15 FGCOLOR 0  NO-UNDO.
 
-DEFINE VARIABLE fiInvoiceDate AS DATE FORMAT "99/99/99":U 
-     VIEW-AS FILL-IN 
+DEFINE VARIABLE fiInvoiceDate AS DATE FORMAT "99/99/99":U
+     VIEW-AS FILL-IN
      SIZE 23.6 BY 1 NO-UNDO.
 
-DEFINE VARIABLE fiInvoiceDateLabel AS CHARACTER FORMAT "X(256)":U INITIAL "Date" 
-      VIEW-AS TEXT 
+DEFINE VARIABLE fiInvoiceDateLabel AS CHARACTER FORMAT "X(256)":U INITIAL "Date"
+      VIEW-AS TEXT
      SIZE 6 BY 1 NO-UNDO.
 
-DEFINE VARIABLE fiInvPeriodText AS CHARACTER FORMAT "X(256)":U INITIAL "Invoice period" 
-      VIEW-AS TEXT 
+DEFINE VARIABLE fiInvPeriodText AS CHARACTER FORMAT "X(256)":U INITIAL "Invoice period"
+      VIEW-AS TEXT
      SIZE 14 BY .62 NO-UNDO.
 
-DEFINE VARIABLE fiProNumber AS CHARACTER FORMAT "X(30)":U 
-     VIEW-AS FILL-IN 
+DEFINE VARIABLE fiProNumber AS CHARACTER FORMAT "X(30)":U
+     VIEW-AS FILL-IN
      SIZE 33 BY 1
      BGCOLOR 15  NO-UNDO.
 
-DEFINE VARIABLE fiProNumberLbl AS CHARACTER FORMAT "X(256)":U INITIAL "Pro #" 
-      VIEW-AS TEXT 
+DEFINE VARIABLE fiProNumberLbl AS CHARACTER FORMAT "X(256)":U INITIAL "Pro #"
+      VIEW-AS TEXT
      SIZE 16.2 BY 1 NO-UNDO.
 
-DEFINE VARIABLE fiReviewStatus AS CHARACTER FORMAT "X(16)":U 
-     VIEW-AS FILL-IN 
+DEFINE VARIABLE fiReviewStatus AS CHARACTER FORMAT "X(16)":U
+     VIEW-AS FILL-IN
      SIZE 28 BY 1
      BGCOLOR 15 FGCOLOR 0  NO-UNDO.
 
-DEFINE VARIABLE fiReviewStatusLbl AS CHARACTER FORMAT "X(16)":U INITIAL "Review status" 
-      VIEW-AS TEXT 
+DEFINE VARIABLE fiReviewStatusLbl AS CHARACTER FORMAT "X(16)":U INITIAL "Review status"
+      VIEW-AS TEXT
      SIZE 15.8 BY 1 NO-UNDO.
 
-DEFINE VARIABLE fiStagingstatus AS CHARACTER FORMAT "X(256)":U 
-      VIEW-AS TEXT 
+DEFINE VARIABLE fiStagingstatus AS CHARACTER FORMAT "X(256)":U
+      VIEW-AS TEXT
      SIZE 33 BY 1
      BGCOLOR 15  NO-UNDO.
 
-DEFINE VARIABLE fistagingstatuslbl AS CHARACTER FORMAT "X(256)":U INITIAL "Staging status" 
-      VIEW-AS TEXT 
+DEFINE VARIABLE fistagingstatuslbl AS CHARACTER FORMAT "X(256)":U INITIAL "Staging status"
+      VIEW-AS TEXT
      SIZE 14 BY 1 NO-UNDO.
 
-DEFINE VARIABLE fiStatusLabel AS CHARACTER FORMAT "X(256)":U INITIAL "Status" 
-      VIEW-AS TEXT 
+DEFINE VARIABLE fiStatusLabel AS CHARACTER FORMAT "X(256)":U INITIAL "Status"
+      VIEW-AS TEXT
      SIZE 10 BY 1 NO-UNDO.
 
-DEFINE VARIABLE fiStatusText AS CHARACTER FORMAT "X(256)":U INITIAL "Change shipment status to" 
-      VIEW-AS TEXT 
+DEFINE VARIABLE fiStatusText AS CHARACTER FORMAT "X(256)":U INITIAL "Change shipment status to"
+      VIEW-AS TEXT
      SIZE 26 BY .62 NO-UNDO.
 
 DEFINE RECTANGLE RECT-54
-     EDGE-PIXELS 2 GRAPHIC-EDGE  NO-FILL   
+     EDGE-PIXELS 2 GRAPHIC-EDGE  NO-FILL
      SIZE 44 BY .1.
 
-DEFINE RECTANGLE RECT-55
-     EDGE-PIXELS 2 GRAPHIC-EDGE  NO-FILL   
-     SIZE 177 BY .1.
-
 DEFINE RECTANGLE RECT-82
-     EDGE-PIXELS 2 GRAPHIC-EDGE  NO-FILL   
+     EDGE-PIXELS 2 GRAPHIC-EDGE  NO-FILL
      SIZE 35 BY .1.
 
-DEFINE VARIABLE tbDispAllocChgCost AS LOGICAL INITIAL yes 
-     LABEL "Display allocated charges && costs" 
+DEFINE VARIABLE tbDispAllocChgCost AS LOGICAL INITIAL YES
+     LABEL "Display allocated charges && costs"
      VIEW-AS TOGGLE-BOX
      SIZE 35.8 BY 1 NO-UNDO.
 
-DEFINE VARIABLE tbHold AS LOGICAL INITIAL no 
-     LABEL "Hold from invoicing" 
+DEFINE VARIABLE tbHold AS LOGICAL INITIAL NO
+     LABEL "Hold from invoicing"
      VIEW-AS TOGGLE-BOX
      SIZE 23.6 BY 1 NO-UNDO.
 
-DEFINE VARIABLE tbPrintDelvTick AS LOGICAL INITIAL no 
-     LABEL "Print delivery ticket" 
+DEFINE VARIABLE tbPrintDelvTick AS LOGICAL INITIAL NO
+     LABEL "Print delivery ticket"
      VIEW-AS TOGGLE-BOX
      SIZE 21.8 BY 1 NO-UNDO.
 
 /* Query definitions                                                    */
 &ANALYZE-SUSPEND
-DEFINE QUERY br-shipdetails FOR 
+DEFINE QUERY br-shipdetails FOR
       temp-ship-details SCROLLING.
 
-DEFINE QUERY frExplship FOR 
+DEFINE QUERY frExplship FOR
       BL-shipments_header SCROLLING.
 &ANALYZE-RESUME
 
@@ -961,57 +933,47 @@ DEFINE BROWSE br-shipdetails
       temp-ship-details.oth_chg_gm          LABEL "Oth chg GM"        FORMAT "->>>,>>>,>>9.9999"
       temp-ship-details.oth_cost_no_gm      LABEL "Oth cost no GM"    FORMAT "->>>,>>>,>>9.9999"
       temp-ship-details.oth_cost_gm         LABEL "Oth cost GM"       FORMAT "->>>,>>>,>>9.9999"
-      temp-ship-details.linked_po           LABEL "PO ID"             FORMAT ">>>>>>>>>>9"
+      temp-ship-details.linked_po           LABEL "PO ID"             FORMAT "{&gcPartialTranID}"
       temp-ship-details.group_id            LABEL "Group ID"          FORMAT "X(30)"
       temp-ship-details.group_header        COLUMN-LABEL "Group header"      FORMAT "Yes/No"
-      temp-ship-details.cWoId               COLUMN-LABEL "WO ID"      FORMAT "X(12)"  WIDTH 14
+      temp-ship-details.cWoId               COLUMN-LABEL "WO ID"      FORMAT "X({&giTranLength})"  WIDTH 14
 
     ENABLE temp-ship-details.dDisplayQty temp-ship-details.disp_price temp-ship-details.disp_price-uom temp-ship-details.ext_price
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
-    WITH SEPARATORS MULTIPLE SIZE 182.4 BY 12
+    WITH SEPARATORS MULTIPLE SIZE 182.4 BY 8.19
          FONT 8 NO-EMPTY-SPACE.
 
 
 /* ************************  Frame Definitions  *********************** */
 
 DEFINE FRAME frExplship
-     bt-tallycalc AT ROW 17.91 COL 69.4
      btSave AT ROW 1.29 COL 2 WIDGET-ID 104
      btShipDtlInfo AT ROW 1.29 COL 7
      btDisplayOrder AT ROW 1.29 COL 12.2
+     fiCurrencyLbl AT ROW 9.38 COL 130.2 NO-LABEL WIDGET-ID 550
      btDispatch AT ROW 1.29 COL 17.4
      btHdrMsgs AT ROW 1.29 COL 22.6
      btnImages AT ROW 1.29 COL 27.8 WIDGET-ID 122
      btCancelStaging AT ROW 1.29 COL 38.2 WIDGET-ID 4
      btCustInfo AT ROW 2.67 COL 50.4
-     fi-cust_id AT ROW 2.71 COL 12.8 COLON-ALIGNED NO-LABEL NO-TAB-STOP 
-     fi-shipto AT ROW 2.71 COL 40 COLON-ALIGNED NO-LABEL NO-TAB-STOP 
-     fi-soid AT ROW 2.71 COL 85.4 COLON-ALIGNED NO-LABEL NO-TAB-STOP 
-     fi-order_date AT ROW 2.71 COL 149 COLON-ALIGNED NO-LABEL NO-TAB-STOP 
-     fi-cust AT ROW 3.81 COL 2 NO-LABEL NO-TAB-STOP 
-     fi-ship_num AT ROW 3.81 COL 85.4 COLON-ALIGNED NO-LABEL NO-TAB-STOP 
+     fiStagingstatus AT ROW 4.91 COL 85.4 COLON-ALIGNED NO-LABEL WIDGET-ID 68 NO-TAB-STOP
      fi-ship_date AT ROW 3.81 COL 149 COLON-ALIGNED NO-LABEL
      btCalendarDt AT ROW 3.81 COL 180.4 HELP
           "Display Calendar"
-     fi-address AT ROW 4.91 COL 2 NO-LABEL NO-TAB-STOP 
      fiExpDate AT ROW 4.91 COL 149 COLON-ALIGNED NO-LABEL
      btCalendarExpDt AT ROW 4.91 COL 180.4 HELP
           "Display Calendar"
-     btRoute AT ROW 5.95 COL 179.4
-     fi-address_2 AT ROW 6 COL 2 NO-LABEL NO-TAB-STOP 
      fiCredStat AT ROW 6 COL 85.4 COLON-ALIGNED NO-LABEL
      fi-route AT ROW 6 COL 149 COLON-ALIGNED NO-LABEL
+     btRoute AT ROW 5.95 COL 179.4
      tbHold AT ROW 7.1 COL 65 WIDGET-ID 42
-     fi-city AT ROW 7.14 COL 2 NO-LABEL NO-TAB-STOP 
-     fi-state AT ROW 7.14 COL 31 COLON-ALIGNED NO-LABEL NO-TAB-STOP 
-     fi-zip AT ROW 7.14 COL 37 COLON-ALIGNED NO-LABEL NO-TAB-STOP 
      fi-stop AT ROW 7.14 COL 149 COLON-ALIGNED NO-LABEL
-     btDriverLoc AT ROW 8.19 COL 179.4 WIDGET-ID 544
+     fi-cust_id AT ROW 2.71 COL 12.8 COLON-ALIGNED NO-LABEL NO-TAB-STOP
      fiReviewStatus AT ROW 8.24 COL 85.4 COLON-ALIGNED NO-LABEL WIDGET-ID 112
      fiDriver AT ROW 8.24 COL 149 COLON-ALIGNED NO-LABEL WIDGET-ID 546
+     btDriverLoc AT ROW 8.19 COL 179.4 WIDGET-ID 544
      fiEstimatedProfit AT ROW 9.33 COL 85.4 COLON-ALIGNED NO-LABEL
-     fiCurrency AT ROW 9.38 COL 149 COLON-ALIGNED NO-LABEL WIDGET-ID 40 NO-TAB-STOP 
      fi-adf AT ROW 10.48 COL 85.4 COLON-ALIGNED NO-LABEL
      fiProNumber AT ROW 10.57 COL 149 COLON-ALIGNED NO-LABEL WIDGET-ID 552
      tbDispAllocChgCost AT ROW 12.29 COL 130.2 WIDGET-ID 36
@@ -1019,110 +981,91 @@ DEFINE FRAME frExplship
      bt-update_detail AT ROW 13.29 COL 7.2 WIDGET-ID 76
      bt-delete AT ROW 13.29 COL 12.4 WIDGET-ID 74
      btViewOthChgCst AT ROW 13.29 COL 17.4
-     btSelectLoc AT ROW 13.29 COL 22.4
-     bt-commit AT ROW 13.29 COL 27.4 WIDGET-ID 624
-     btSpecifyTags AT ROW 13.29 COL 32.4
-     btViewMsgs AT ROW 13.29 COL 37.6
-     btSerNumEnt AT ROW 13.29 COL 42.8 WIDGET-ID 38
-     btSelectAll AT ROW 13.29 COL 48 WIDGET-ID 120
-     btUnitData AT ROW 13.29 COL 53.2 WIDGET-ID 34
-     btPodAccept AT ROW 13.29 COL 58.4 WIDGET-ID 116
-     btPodReject AT ROW 13.29 COL 82.2 WIDGET-ID 118
+     fistagingstatuslbl AT ROW 4.91 COL 65 NO-LABEL WIDGET-ID 70
+     btSelectLoc AT ROW 13.29 COL 22.6
+     btSpecifyTags AT ROW 13.29 COL 27.8
+     btViewMsgs AT ROW 13.29 COL 33
+     btSerNumEnt AT ROW 13.29 COL 38.2 WIDGET-ID 38
+     btSelectAll AT ROW 13.29 COL 43.4 WIDGET-ID 120
+     btUnitData AT ROW 13.29 COL 48.6 WIDGET-ID 34
+     btPodAccept AT ROW 13.29 COL 53.8 WIDGET-ID 116
+     btPodReject AT ROW 13.29 COL 77.6 WIDGET-ID 118
+     fi-ship_num AT ROW 3.81 COL 85.4 COLON-ALIGNED NO-LABEL NO-TAB-STOP
      cbDisplayUOM AT ROW 13.33 COL 149 COLON-ALIGNED NO-LABEL WIDGET-ID 2
-     br-shipdetails AT ROW 15.29 COL 1.8
-     fiInvoiceDate AT ROW 29.1 COL 90.4 COLON-ALIGNED NO-LABEL WIDGET-ID 26
-     btCalendarInvDt AT ROW 29.1 COL 116.4 HELP
+     fi-asterisk AT ROW 10.48 COL 113.8 COLON-ALIGNED NO-LABEL
+     br-shipdetails AT ROW 14.57 COL 2
+     fiInvoiceDate AT ROW 23.76 COL 90.4 COLON-ALIGNED NO-LABEL WIDGET-ID 26
+     btCalendarInvDt AT ROW 23.76 COL 116.4 HELP
           "Display Calendar" WIDGET-ID 20
-     cbStatus AT ROW 29.1 COL 168.4 NO-LABEL WIDGET-ID 14
-     cbInvoicePeriod AT ROW 30.29 COL 67 COLON-ALIGNED NO-LABEL WIDGET-ID 22
-     cbInvoiceYear AT ROW 30.29 COL 90.4 COLON-ALIGNED NO-LABEL WIDGET-ID 24
-    WITH 1 DOWN NO-BOX KEEP-TAB-ORDER OVERLAY 
-         SIDE-LABELS NO-UNDERLINE THREE-D 
-         AT COL 1 ROW 1.05
-         SIZE 184.4 BY 32.86
+     cbInvoicePeriod AT ROW 24.95 COL 67 COLON-ALIGNED NO-LABEL WIDGET-ID 22
+     cbInvoiceYear AT ROW 24.95 COL 90.4 COLON-ALIGNED NO-LABEL WIDGET-ID 24
+     btDefault AT ROW 24.95 COL 108.4 WIDGET-ID 18
+     cbStatus AT ROW 23.76 COL 168.4 NO-LABEL WIDGET-ID 14
+     tbPrintDelvTick AT ROW 24.95 COL 132.8 WIDGET-ID 16
+     fi-soid AT ROW 2.71 COL 85.4 COLON-ALIGNED NO-LABEL NO-TAB-STOP
+     btUpdateStatus AT ROW 25.95 COL 168.4 WIDGET-ID 32
+     bt-prev AT ROW 25.95 COL 2 WIDGET-ID 8
+     bt-next AT ROW 25.95 COL 7 WIDGET-ID 6
+     fi-shipto AT ROW 2.71 COL 40 COLON-ALIGNED NO-LABEL NO-TAB-STOP
+     fiCurrency AT ROW 9.38 COL 149 COLON-ALIGNED NO-LABEL WIDGET-ID 40 NO-TAB-STOP
+    WITH 1 DOWN NO-BOX KEEP-TAB-ORDER OVERLAY
+         SIDE-LABELS NO-UNDERLINE THREE-D
+         AT COL 1 ROW 1
+         SIZE 184.4 BY 26.33
          FONT 8.
 
 /* DEFINE FRAME statement is approaching 4K Bytes.  Breaking it up   */
 DEFINE FRAME frExplship
-     btDefault AT ROW 30.29 COL 108.4 WIDGET-ID 18
-     tbPrintDelvTick AT ROW 30.29 COL 132.8 WIDGET-ID 16
-     bt-prev AT ROW 31.29 COL 2 WIDGET-ID 8
-     bt-next AT ROW 31.29 COL 7 WIDGET-ID 6
-     btUpdateStatus AT ROW 31.29 COL 168.4 WIDGET-ID 32
-     fistagingstatuslbl AT ROW 4.91 COL 65 NO-LABEL WIDGET-ID 70
-     fiStagingstatus AT ROW 4.91 COL 85.4 COLON-ALIGNED NO-LABEL WIDGET-ID 68 NO-TAB-STOP 
+     fi-order_date AT ROW 2.71 COL 149 COLON-ALIGNED NO-LABEL NO-TAB-STOP
+     fi-cust AT ROW 3.81 COL 2 NO-LABEL NO-TAB-STOP
+     fiStatusText AT ROW 23.05 COL 128.2 COLON-ALIGNED NO-LABEL WIDGET-ID 10 NO-TAB-STOP
+     fi-address AT ROW 4.91 COL 2 NO-LABEL NO-TAB-STOP
+     fi-address_2 AT ROW 6 COL 2 NO-LABEL NO-TAB-STOP
+     fi-city AT ROW 7.14 COL 2 NO-LABEL NO-TAB-STOP
+     fi-state AT ROW 7.14 COL 31 COLON-ALIGNED NO-LABEL NO-TAB-STOP
+     fi-zip AT ROW 7.14 COL 37 COLON-ALIGNED NO-LABEL NO-TAB-STOP
+     bt-tallycalc AT ROW 17.91 COL 69.4
+     fi-adf-message AT ROW 11.57 COL 65.4 COLON-ALIGNED NO-LABEL NO-TAB-STOP
+     fiInvPeriodText AT ROW 23.05 COL 65 NO-LABEL WIDGET-ID 28 NO-TAB-STOP
+     fiStatusLabel AT ROW 23.76 COL 132.8 NO-LABEL WIDGET-ID 102 NO-TAB-STOP
+     fiInvoiceDateLabel AT ROW 23.76 COL 69.2 NO-LABEL WIDGET-ID 96 NO-TAB-STOP
      fiReviewStatusLbl AT ROW 8.24 COL 65 NO-LABEL WIDGET-ID 114
-     fiCurrencyLbl AT ROW 9.38 COL 130.2 NO-LABEL WIDGET-ID 550
-     fi-asterisk AT ROW 10.48 COL 113.8 COLON-ALIGNED NO-LABEL
      fiProNumberLbl AT ROW 10.57 COL 130.2 NO-LABEL WIDGET-ID 554
-     fi-adf-message AT ROW 11.57 COL 65.4 COLON-ALIGNED NO-LABEL NO-TAB-STOP 
-     fiInvPeriodText AT ROW 28.38 COL 65 NO-LABEL WIDGET-ID 28 NO-TAB-STOP 
-     fiStatusText AT ROW 28.38 COL 128.2 COLON-ALIGNED NO-LABEL WIDGET-ID 10 NO-TAB-STOP 
-     fiInvoiceDateLabel AT ROW 29.1 COL 69.2 NO-LABEL WIDGET-ID 96 NO-TAB-STOP 
-     fiStatusLabel AT ROW 29.1 COL 132.8 NO-LABEL WIDGET-ID 102 NO-TAB-STOP 
-     "Ship-to" VIEW-AS TEXT
-          SIZE 7 BY 1 AT ROW 2.71 COL 34.6 WIDGET-ID 108
      "SO ID" VIEW-AS TEXT
           SIZE 13 BY 1 AT ROW 2.71 COL 65 WIDGET-ID 46
-     "Estimated profit" VIEW-AS TEXT
-          SIZE 16.8 BY 1 AT ROW 9.33 COL 65 WIDGET-ID 52
-     "Expected ship date" VIEW-AS TEXT
-          SIZE 18.6 BY 1 AT ROW 3.81 COL 130.2 WIDGET-ID 58
-     "Shipment #" VIEW-AS TEXT
-          SIZE 11.8 BY 1 AT ROW 3.81 COL 65 WIDGET-ID 48
-     "Expected delv date" VIEW-AS TEXT
-          SIZE 18.6 BY 1 AT ROW 4.91 COL 130.2 WIDGET-ID 60
-     "Stop #" VIEW-AS TEXT
-          SIZE 8 BY 1 AT ROW 7.14 COL 130.2 WIDGET-ID 64
-     "ADF" VIEW-AS TEXT
-          SIZE 8 BY 1 AT ROW 10.48 COL 65 WIDGET-ID 54
      "Driver" VIEW-AS TEXT
           SIZE 14.6 BY 1 AT ROW 8.24 COL 130.2 WIDGET-ID 548
+     "Expected delv date" VIEW-AS TEXT
+          SIZE 18.6 BY 1 AT ROW 4.91 COL 130.2 WIDGET-ID 60
+     "Route ID" VIEW-AS TEXT
+          SIZE 9.6 BY 1 AT ROW 6 COL 130.2 WIDGET-ID 62
+     "Stop #" VIEW-AS TEXT
+          SIZE 8 BY 1 AT ROW 7.14 COL 130.2 WIDGET-ID 64
+     "Ship-to" VIEW-AS TEXT
+          SIZE 7 BY 1 AT ROW 2.71 COL 34.6 WIDGET-ID 108
+     "Shipment #" VIEW-AS TEXT
+          SIZE 11.8 BY 1 AT ROW 3.81 COL 65 WIDGET-ID 48
+     "Credit status" VIEW-AS TEXT
+          SIZE 15.8 BY 1 AT ROW 6 COL 65 WIDGET-ID 50
+     "Estimated profit" VIEW-AS TEXT
+          SIZE 16.8 BY 1 AT ROW 9.33 COL 65 WIDGET-ID 52
+     "ADF" VIEW-AS TEXT
+          SIZE 8 BY 1 AT ROW 10.48 COL 65 WIDGET-ID 54
      "Customer ID" VIEW-AS TEXT
           SIZE 12.2 BY 1 AT ROW 2.71 COL 2 WIDGET-ID 106
      "Order date" VIEW-AS TEXT
           SIZE 14 BY 1 AT ROW 2.71 COL 130.2 WIDGET-ID 56
+     "Expected ship date" VIEW-AS TEXT
+          SIZE 18.6 BY 1 AT ROW 3.81 COL 130.2 WIDGET-ID 58
      "Display UOM" VIEW-AS TEXT
           SIZE 13 BY 1 AT ROW 13.33 COL 130.2 WIDGET-ID 110
-     "Route ID" VIEW-AS TEXT
-          SIZE 9.6 BY 1 AT ROW 6 COL 130.2 WIDGET-ID 62
-     "Credit status" VIEW-AS TEXT
-          SIZE 15.8 BY 1 AT ROW 6 COL 65 WIDGET-ID 50
-     RECT-55 AT ROW 27.57 COL 4.8 WIDGET-ID 620
-     RECT-82 AT ROW 28.67 COL 149.6 WIDGET-ID 12
-     RECT-54 AT ROW 28.71 COL 76.4 WIDGET-ID 30
-    WITH 1 DOWN NO-BOX KEEP-TAB-ORDER OVERLAY 
-         SIDE-LABELS NO-UNDERLINE THREE-D 
-         AT COL 1 ROW 1.05
-         SIZE 184.4 BY 32.86
+     RECT-82 AT ROW 23.33 COL 149.6 WIDGET-ID 12
+     RECT-54 AT ROW 23.38 COL 76.4 WIDGET-ID 30
+    WITH 1 DOWN NO-BOX KEEP-TAB-ORDER OVERLAY
+         SIDE-LABELS NO-UNDERLINE THREE-D
+         AT COL 1 ROW 1
+         SIZE 184.4 BY 26.33
          FONT 8.
-
-DEFINE FRAME fr-details
-     fiItem AT ROW 1.71 COL 10 COLON-ALIGNED NO-LABEL WIDGET-ID 604
-     bt-locate AT ROW 1.71 COL 39 WIDGET-ID 592
-     fiQty AT ROW 3 COL 10 COLON-ALIGNED HELP
-          "qty_ordered" NO-LABEL WIDGET-ID 608
-     btUOMDetails AT ROW 3 COL 39 WIDGET-ID 600
-     fiPrice AT ROW 1.71 COL 102.4 COLON-ALIGNED NO-LABEL WIDGET-ID 606
-     btPriceUOMDetails AT ROW 1.67 COL 124.6 WIDGET-ID 594
-     fiExtPrice AT ROW 3 COL 102.4 COLON-ALIGNED NO-LABEL WIDGET-ID 602
-     btCancelDetails AT ROW 4.57 COL 132.2 WIDGET-ID 590
-     btSaveDetails AT ROW 4.57 COL 148.2 WIDGET-ID 596
-     btSaveNextDetails AT ROW 4.57 COL 164.2 WIDGET-ID 598
-     "Price" VIEW-AS TEXT
-          SIZE 6.6 BY 1 AT ROW 1.71 COL 92 WIDGET-ID 612
-     "Ext. Price" VIEW-AS TEXT
-          SIZE 9.2 BY 1 AT ROW 2.95 COL 92 WIDGET-ID 610
-     "Dimension" VIEW-AS TEXT
-          SIZE 11 BY 1 AT ROW 1.62 COL 47.6 WIDGET-ID 614
-     "Quantity" VIEW-AS TEXT
-          SIZE 9 BY 1 AT ROW 2.95 COL 3 WIDGET-ID 616
-     "Item" VIEW-AS TEXT
-          SIZE 6 BY 1 AT ROW 1.71 COL 3 WIDGET-ID 618
-    WITH 1 DOWN NO-BOX KEEP-TAB-ORDER OVERLAY 
-         NO-LABELS SIDE-LABELS NO-UNDERLINE THREE-D 
-         AT COL 2 ROW 21.81
-         SIZE 182.4 BY 5.24 WIDGET-ID 100.
 
 
 /* *********************** Procedure Settings ************************ */
@@ -1140,22 +1083,22 @@ IF SESSION:DISPLAY-TYPE = "GUI":U THEN
   CREATE WINDOW wn-ship_details ASSIGN
          HIDDEN             = YES
          TITLE              = "Staging Details"
-         HEIGHT             = 31.62
+         HEIGHT             = 26.33
          WIDTH              = 184.4
          MAX-HEIGHT         = 48.48
          MAX-WIDTH          = 384
          VIRTUAL-HEIGHT     = 48.48
          VIRTUAL-WIDTH      = 384
-         RESIZE             = yes
-         SCROLL-BARS        = no
-         STATUS-AREA        = no
+         RESIZE             = YES
+         SCROLL-BARS        = NO
+         STATUS-AREA        = NO
          BGCOLOR            = ?
          FGCOLOR            = ?
-         KEEP-FRAME-Z-ORDER = yes
-         THREE-D            = yes
+         KEEP-FRAME-Z-ORDER = YES
+         THREE-D            = YES
          CONTEXT-HELP-FILE  = "10190":U
-         MESSAGE-AREA       = no
-         SENSITIVE          = yes.
+         MESSAGE-AREA       = NO
+         SENSITIVE          = YES.
 ELSE {&WINDOW-NAME} = CURRENT-WINDOW.
 /* END WINDOW DEFINITION                                                */
 &ANALYZE-RESUME
@@ -1165,75 +1108,16 @@ ELSE {&WINDOW-NAME} = CURRENT-WINDOW.
 /* ***********  Runtime Attributes and AppBuilder Settings  *********** */
 
 &ANALYZE-SUSPEND _RUN-TIME-ATTRIBUTES
-/* REPARENT FRAME */
-ASSIGN FRAME fr-details:FRAME = FRAME frExplship:HANDLE.
-
-/* SETTINGS FOR FRAME fr-details
-   NOT-VISIBLE Custom                                                   */
-ASSIGN 
-       FRAME fr-details:HIDDEN           = TRUE
-       FRAME fr-details:SENSITIVE        = FALSE.
-
-/* SETTINGS FOR BUTTON bt-locate IN FRAME fr-details
-   NO-ENABLE                                                            */
-ASSIGN 
-       bt-locate:HIDDEN IN FRAME fr-details           = TRUE.
-
-/* SETTINGS FOR BUTTON btCancelDetails IN FRAME fr-details
-   NO-ENABLE                                                            */
-ASSIGN 
-       btCancelDetails:HIDDEN IN FRAME fr-details           = TRUE.
-
-/* SETTINGS FOR BUTTON btPriceUOMDetails IN FRAME fr-details
-   NO-ENABLE                                                            */
-ASSIGN 
-       btPriceUOMDetails:HIDDEN IN FRAME fr-details           = TRUE.
-
-/* SETTINGS FOR BUTTON btSaveDetails IN FRAME fr-details
-   NO-ENABLE                                                            */
-ASSIGN 
-       btSaveDetails:HIDDEN IN FRAME fr-details           = TRUE.
-
-/* SETTINGS FOR BUTTON btSaveNextDetails IN FRAME fr-details
-   NO-ENABLE                                                            */
-ASSIGN 
-       btSaveNextDetails:HIDDEN IN FRAME fr-details           = TRUE.
-
-/* SETTINGS FOR BUTTON btUOMDetails IN FRAME fr-details
-   NO-ENABLE                                                            */
-ASSIGN 
-       btUOMDetails:HIDDEN IN FRAME fr-details           = TRUE.
-
-/* SETTINGS FOR FILL-IN fiExtPrice IN FRAME fr-details
-   NO-DISPLAY NO-ENABLE                                                 */
-ASSIGN 
-       fiExtPrice:HIDDEN IN FRAME fr-details           = TRUE.
-
-/* SETTINGS FOR FILL-IN fiItem IN FRAME fr-details
-   NO-DISPLAY NO-ENABLE                                                 */
-ASSIGN 
-       fiItem:HIDDEN IN FRAME fr-details           = TRUE.
-
-/* SETTINGS FOR FILL-IN fiPrice IN FRAME fr-details
-   NO-DISPLAY NO-ENABLE                                                 */
-ASSIGN 
-       fiPrice:HIDDEN IN FRAME fr-details           = TRUE.
-
-/* SETTINGS FOR FILL-IN fiQty IN FRAME fr-details
-   NO-DISPLAY NO-ENABLE                                                 */
-ASSIGN 
-       fiQty:HIDDEN IN FRAME fr-details           = TRUE.
-
 /* SETTINGS FOR FRAME frExplship
-   FRAME-NAME                                                           */
-/* BROWSE-TAB br-shipdetails cbDisplayUOM frExplship */
-ASSIGN 
+   FRAME-NAME Custom                                                    */
+/* BROWSE-TAB br-shipdetails fi-asterisk frExplship */
+ASSIGN
        br-shipdetails:NUM-LOCKED-COLUMNS IN FRAME frExplship     = 1
        br-shipdetails:COLUMN-RESIZABLE IN FRAME frExplship       = TRUE.
 
 /* SETTINGS FOR BUTTON bt-tallycalc IN FRAME frExplship
    NO-ENABLE                                                            */
-ASSIGN 
+ASSIGN
        bt-tallycalc:HIDDEN IN FRAME frExplship           = TRUE.
 
 /* SETTINGS FOR BUTTON btDispatch IN FRAME frExplship
@@ -1242,7 +1126,7 @@ ASSIGN
    NO-DISPLAY                                                           */
 /* SETTINGS FOR BUTTON btnImages IN FRAME frExplship
    NO-ENABLE                                                            */
-ASSIGN 
+ASSIGN
        btnImages:HIDDEN IN FRAME frExplship           = TRUE.
 
 /* SETTINGS FOR COMBO-BOX cbStatus IN FRAME frExplship
@@ -1273,7 +1157,7 @@ ASSIGN
    NO-DISPLAY NO-ENABLE                                                 */
 /* SETTINGS FOR FILL-IN fiCredStat IN FRAME frExplship
    NO-ENABLE                                                            */
-ASSIGN 
+ASSIGN
        fiCredStat:READ-ONLY IN FRAME frExplship        = TRUE.
 
 /* SETTINGS FOR FILL-IN fiCurrency IN FRAME frExplship
@@ -1290,12 +1174,12 @@ ASSIGN
    ALIGN-L                                                              */
 /* SETTINGS FOR FILL-IN fiReviewStatus IN FRAME frExplship
    NO-ENABLE                                                            */
-ASSIGN 
+ASSIGN
        fiReviewStatus:READ-ONLY IN FRAME frExplship        = TRUE.
 
 /* SETTINGS FOR FILL-IN fiReviewStatusLbl IN FRAME frExplship
    NO-ENABLE ALIGN-L                                                    */
-ASSIGN 
+ASSIGN
        fiReviewStatusLbl:READ-ONLY IN FRAME frExplship        = TRUE.
 
 /* SETTINGS FOR FILL-IN fistagingstatuslbl IN FRAME frExplship
@@ -1305,7 +1189,7 @@ ASSIGN
 /* SETTINGS FOR FILL-IN fiStatusText IN FRAME frExplship
    NO-ENABLE                                                            */
 IF SESSION:DISPLAY-TYPE = "GUI":U AND VALID-HANDLE(wn-ship_details)
-THEN wn-ship_details:HIDDEN = no.
+THEN wn-ship_details:HIDDEN = NO.
 
 /* _RUN-TIME-ATTRIBUTES-END */
 &ANALYZE-RESUME
@@ -1322,12 +1206,6 @@ OPEN QUERY {&SELF-NAME} FOR EACH temp-ship-details.
 */  /* BROWSE br-shipdetails */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _QUERY-BLOCK FRAME fr-details
-/* Query rebuild information for FRAME fr-details
-     _Query            is NOT OPENED
-*/  /* FRAME fr-details */
-&ANALYZE-RESUME
-
 &ANALYZE-SUSPEND _QUERY-BLOCK FRAME frExplship
 /* Query rebuild information for FRAME frExplship
      _TblList          = "PLATTE.BL-shipments_header"
@@ -1337,30 +1215,8 @@ OPEN QUERY {&SELF-NAME} FOR EACH temp-ship-details.
 */  /* FRAME frExplship */
 &ANALYZE-RESUME
 
- 
 
 
-/* **********************  Create OCX Containers  ********************** */
-
-&ANALYZE-SUSPEND _CREATE-DYNAMIC
-
-&IF "{&OPSYS}" = "WIN32":U AND "{&WINDOW-SYSTEM}" NE "TTY":U &THEN
-
-CREATE CONTROL-FRAME CtrlFrame ASSIGN
-       FRAME           = FRAME fr-details:HANDLE
-       ROW             = 1.67
-       COLUMN          = 59.6
-       HEIGHT          = 1
-       WIDTH           = 17.6
-       WIDGET-ID       = 622
-       HIDDEN          = no
-       SENSITIVE       = yes.
-/* CtrlFrame OCXINFO:CREATE-CONTROL from: {C0DE1920-7279-4FEB-8673-6816B6C9FE24} type: ComboBox */
-      CtrlFrame:MOVE-AFTER(bt-locate:HANDLE IN FRAME fr-details).
-
-&ENDIF
-
-&ANALYZE-RESUME /* End of _CREATE-DYNAMIC */
 
 
 /* ************************  Control Triggers  ************************ */
@@ -1424,16 +1280,7 @@ DO:
   DEFINE BUFFER   buff-temp-ship       FOR  temp-ship-details.
   DEFINE BUFFER   bl-temp-ship-details FOR  temp-ship-details.
 
-  IF glLineUpdateMode AND 
-     NOT glFromBtcommit THEN 
-  DO:
-    RUN LoadLineEdit.
 
-    RETURN .  
-  END.
-  
-  glFromBtcommit = FALSE .
-  
   IF bt-update_detail:VISIBLE   IN FRAME {&FRAME-NAME} = YES AND
      bt-update_detail:SENSITIVE IN FRAME {&FRAME-NAME} = YES AND
      glMoveDetail                                      = NO  THEN
@@ -1758,10 +1605,11 @@ DO:
     IF AVAILABLE temp-ship-details THEN
     DO:
       ASSIGN
-        grCurrentRECID    = RECID(temp-ship-details)
+        grCurrentRECID   = RECID(temp-ship-details)
         g-detail_qty     = DECIMAL(temp-ship-details.qty)
         gdDetailTallyQty = DECIMAL(temp-ship-details.dDisplayQty).
-
+      
+      grLineUpdateRECID = grCurrentRECID. // kem - change on double click
       RUN check_for_tally_calc.
 
       RUN set_message_bmp
@@ -1776,6 +1624,8 @@ DO:
     RUN set_message_bmp
       ( INPUT 0 ).
 
+  RUN LoadLineUpdate.
+  
 END.
 
 /* _UIB-CODE-BLOCK-END */
@@ -1786,21 +1636,6 @@ END.
 ON ROW-LEAVE OF br-shipdetails IN FRAME frExplship
 DO:
   bt-tallycalc:VISIBLE = FALSE.
-END.
-
-/* _UIB-CODE-BLOCK-END */
-&ANALYZE-RESUME
-
-
-&Scoped-define SELF-NAME bt-commit
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL bt-commit wn-ship_details
-ON CHOOSE OF bt-commit IN FRAME frExplship /* Commit */
-DO:
-  /* Make sure leave trigger fires from widget we just left */
-  APPLY "ENTRY":U TO bt-commit.     
-  
-  RUN btCommitProcedure ("bt-commit":U ).                 
-
 END.
 
 /* _UIB-CODE-BLOCK-END */
@@ -2173,26 +2008,205 @@ END.
 &ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL bt-update_detail wn-ship_details
 ON CHOOSE OF bt-update_detail IN FRAME frExplship /* Update */
 DO:
+  DEFINE VARIABLE l-rec                AS  RECID      NO-UNDO.
+  DEFINE VARIABLE l-curr-row           AS  INTEGER    NO-UNDO INIT 1.
+  DEFINE VARIABLE cFunction            AS  CHARACTER  NO-UNDO.
+  DEFINE VARIABLE iPrevPOID            AS  INTEGER    NO-UNDO INIT -1.
+  DEFINE VARIABLE cSeqList             AS  CHARACTER  NO-UNDO INIT "".
+  DEFINE VARIABLE cSOIDsysid           AS  CHARACTER  NO-UNDO.
+  DEFINE VARIABLE iSOID                AS  INTEGER    NO-UNDO.
+  DEFINE VARIABLE iShipNum             AS  INTEGER    NO-UNDO.
+  DEFINE VARIABLE iCtr                 AS  INTEGER    NO-UNDO.
+  DEFINE VARIABLE lReturn              AS  LOGICAL    NO-UNDO.
+  DEFINE VARIABLE lCancel              AS  LOGICAL    NO-UNDO.
+  DEFINE VARIABLE iNumRows             AS  INTEGER    NO-UNDO.
+  DEFINE VARIABLE lBuildShipByPO       AS  LOGICAL    NO-UNDO INIT NO.
+  DEFINE VARIABLE cMessage             AS  CHARACTER  NO-UNDO.
+  DEFINE VARIABLE lDummy               AS  LOGICAL    NO-UNDO.
+  DEFINE VARIABLE lOKtoContinue        AS  LOGICAL    NO-UNDO.
+
+  DEFINE BUFFER   bl-temp-ship-details FOR temp-ship-details.
+
+
   /* Make sure leave trigger fires from widget we just left */
   APPLY "ENTRY":U TO bt-update_detail.
 
-  IF glLineUpdateMode THEN 
+  IF glMoveDetail THEN
   DO:
-    IF br-shipdetails:NUM-SELECTED-ROWS IN FRAME {&FRAME-NAME} <> 1 THEN
+    IF br-shipdetails:NUM-SELECTED-ROWS IN FRAME {&FRAME-NAME} = 0 THEN
     DO:
       RUN sysinfok.p
-        ( INPUT "select_row",
+        ( INPUT "select_rows",
+          INPUT "move" ).
+      RETURN NO-APPLY.
+    END. /* IF br-shipdetails:NUM-SELECTED-ROWS IN FRAME {&FRAME-NAME} = 0 THEN */
+    ELSE
+    DO:
+      ASSIGN
+        lBuildShipByPO = NO.
+
+      FOR FIRST param_so WHERE
+                param_so.system_id = gcCategoryList[{&param_so-sys-id}]
+                NO-LOCK:
+        ASSIGN
+          lBuildShipByPO = param_so.direct_ship_by_po.
+      END.
+
+      DO iCtr = 1 TO br-shipdetails:NUM-SELECTED-ROWS:
+
+        ASSIGN
+          lReturn = br-shipdetails:FETCH-SELECTED-ROW(iCtr) NO-ERROR.
+
+        IF NOT AVAILABLE temp-ship-details THEN
+          NEXT.
+
+        IF temp-ship-details.shipping_rule = "Ship Direct" THEN
+        DO:
+          IF temp-ship-details.contract_prices_locked = YES THEN
+          DO:
+            RUN sysinfok.p
+              (INPUT "contractpriceslocked3",
+               INPUT "Quantity|moved").
+
+            RETURN.
+          END.
+
+          FIND FIRST tt-ship-details-original WHERE
+                     tt-ship-details-original.rShipDetRecid = temp-ship-details.rec
+                     NO-LOCK.
+
+          EMPTY TEMP-TABLE ttTallyChange.
+
+          /* We do not need ttTallyChange here because if the line has been at
+             least partially staged, picked, or invoiced we don't allow this change */
+          RUN chgreqso.p
+            ( INPUT  gscSessionContextId,
+              INPUT  "SO",
+              INPUT  temp-ship-details.so_id,
+              INPUT  temp-ship-details.so_id_sysid,
+              INPUT  temp-ship-details.sequence,
+              INPUT  "Move Item",
+              INPUT  "", /* called from */
+              INPUT  0, /* orig tot qty */
+              INPUT  0,
+              INPUT  ABS((tt-ship-details-original.orig-stock-qty / temp-ship-details.disp_qty_conv)),
+              INPUT  temp-ship-details.uom,
+              INPUT  temp-ship-details.uom_ptr,
+              INPUT  temp-ship-details.uom_ptr_sysid,
+              INPUT  "",
+              INPUT  0,
+              INPUT  0,
+              INPUT  NO,
+              INPUT  TABLE ttTallyChange,
+              OUTPUT cMessage,
+              OUTPUT lDummy,
+              OUTPUT lOKtoContinue,
+              OUTPUT lDummy ).
+
+          IF cMessage <> "" THEN
+          DO:
+            MESSAGE cMessage
+              VIEW-AS ALERT-BOX ERROR BUTTONS OK.
+          END. /* IF cMessage <> "" THEN */
+
+          IF lOKtoContinue = NO THEN
+          DO:
+            ASSIGN
+              lReturn = br-shipdetails:FETCH-SELECTED-ROW(br-shipdetails:NUM-SELECTED-ROWS) NO-ERROR.
+
+            RETURN NO-APPLY.
+          END. /* IF lOKtoContinue = NO THEN */
+
+        END. /* IF temp-ship-details.shipping_rule = "Ship Direct" THEN */
+
+        ASSIGN
+          cSOIDsysid = temp-ship-details.so_id_sysid
+          iSOID      = temp-ship-details.so_id
+          iShipNum   = temp-ship-details.ship-num
+          cSeqList   = cSeqList + STRING(temp-ship-details.sequence) + CHR(3).
+
+        /* If we build shipments by PO then don't allow multiple lines with different PO number */
+        IF lBuildShipByPO = YES THEN
+        DO:
+          IF iPrevPOID = -1 THEN
+            ASSIGN
+              iPrevPOID = temp-ship-details.linked_po.
+          ELSE
+            IF iPrevPOID <> temp-ship-details.linked_po THEN
+            DO:
+              RUN sysinfok.p
+                ( INPUT "movemultiposhipmt",
+                  INPUT "" ).
+
+              ASSIGN
+                lReturn = br-shipdetails:FETCH-SELECTED-ROW(br-shipdetails:NUM-SELECTED-ROWS) NO-ERROR.
+
+              RETURN NO-APPLY.
+            END.
+        END. /* IF lBuildShipByPO = YES THEN */
+
+      END. /* DO iCtr... */
+
+      ASSIGN
+        cSeqList = RIGHT-TRIM(cSeqList,CHR(3))
+        iNumRows = 0.
+
+      FOR EACH bl-temp-ship-details NO-LOCK WHILE iNumRows < 2:
+        iNumRows = iNumRows + 1.
+      END.
+
+      glByPassEntryTrigger2 = YES.
+
+      CURRENT-WINDOW:SENSITIVE = NO.
+
+      RUN moveshipdtl.w
+        ( INPUT  lBuildShipByPO,
+          INPUT  iPrevPOID,
+          INPUT  cSOIDsysid,
+          INPUT  iSOID,
+          INPUT  iShipNum,
+          INPUT  cSeqList,
+          INPUT  (IF iNumRows > 1 THEN YES ELSE NO),
+          OUTPUT lCancel ).
+
+      CURRENT-WINDOW = {&WINDOW-NAME}.
+      CURRENT-WINDOW:SENSITIVE = YES.
+      APPLY "ENTRY" TO CURRENT-WINDOW.
+
+      glByPassEntryTrigger2 = NO.
+
+      IF lCancel = YES THEN
+        RETURN NO-APPLY.
+
+      RUN Build_Screen
+        ( INPUT ip-shiphead_rec,
+          INPUT ip-calling_module,
+          INPUT ip-context ).
+    END. /* IF br-shipdetails:NUM-SELECTED-ROWS...ELSE */
+  END.
+  ELSE
+  DO:
+    IF br-shipdetails:NUM-SELECTED-ROWS IN FRAME {&FRAME-NAME} = 0 THEN
+    DO:
+      RUN sysinfok.p
+        ( INPUT "select_rows",
           INPUT "update" ).
       RETURN NO-APPLY.
-    END.   
-      
-    APPLY "mouse-select-dblclick" TO BROWSE br-shipdetails.
-    RETURN NO-APPLY.
-    
+    END. /* IF br-shipdetails:NUM-SELECTED-ROWS IN FRAME {&FRAME-NAME} = 0 THEN */
+
+    IF br-shipdetails:NUM-SELECTED-ROWS > 1 THEN
+    DO:
+      RUN sysinfok.p
+        ( INPUT "onerowfunc",
+          INPUT "" ).
+
+      RETURN NO-APPLY.
+    END.
+
+    APPLY "MOUSE-SELECT-DBLCLICK" TO br-shipdetails.
+
   END.
-  ELSE 
-    RUN btCommitProcedure ("").
-  
+
 END.
 
 /* _UIB-CODE-BLOCK-END */
@@ -2374,32 +2388,6 @@ END.
 &ANALYZE-RESUME
 
 
-&Scoped-define FRAME-NAME fr-details
-&Scoped-define SELF-NAME btCancelDetails
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL btCancelDetails wn-ship_details
-ON CHOOSE OF btCancelDetails IN FRAME fr-details /* Cancel */
-DO:
-   DISPLAY 
-        fiItem
-        fiQty         
-        /*combo-box ??  = temp-ship-details.cDisplayUOM*/ 
-        fiPrice       
-        fiExtPrice
-   WITH FRAME fr-details.
-      
-   gchDimensionsComboBox:TEXT = temp-ship-details.cDimension.
-   
-   APPLY "Entry" to fiQty in FRAME fr-details.
-   
-   RETURN NO-APPLY. 
-      
-END.
-
-/* _UIB-CODE-BLOCK-END */
-&ANALYZE-RESUME
-
-
-&Scoped-define FRAME-NAME frExplship
 &Scoped-define SELF-NAME btCancelStaging
 &ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL btCancelStaging wn-ship_details
 ON CHOOSE OF btCancelStaging IN FRAME frExplship /* Cancel Staging */
@@ -2887,27 +2875,6 @@ END.
 &ANALYZE-RESUME
 
 
-&Scoped-define FRAME-NAME fr-details
-&Scoped-define SELF-NAME btSaveNextDetails
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL btSaveNextDetails wn-ship_details
-ON CHOOSE OF btSaveNextDetails IN FRAME fr-details /* Save  Next */
-DO:
-  /*Check if record was changed*/  
-  /*Save current record*/
-  /*Find Next record */ 
-  /*RUN LoadLineEdit.*/
-  
-  APPLY "Entry" TO fiQty IN FRAME fr-details.
-  RETURN NO-APPLY.
-   
-END.
-
-/* _UIB-CODE-BLOCK-END */
-&ANALYZE-RESUME
-
-
-
-&Scoped-define FRAME-NAME frExplship
 &Scoped-define SELF-NAME btSelectAll
 &ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL btSelectAll wn-ship_details
 ON CHOOSE OF btSelectAll IN FRAME frExplship /* Select all (Ctrl+L) */
@@ -2948,8 +2915,7 @@ DO:
       OUTPUT lUseDefaultLoc,
       OUTPUT lRemoveFromOnHold ).
 
-  IF iLocPtr <> 0 OR 
-     lUseDefaultLoc = YES THEN
+  IF iLocPtr <> 0 OR lUseDefaultLoc = YES THEN
     RUN commitToLocation
         (INPUT iLocPtr,
          INPUT lUseDefaultLoc,
@@ -3451,39 +3417,6 @@ END.
 &ANALYZE-RESUME
 
 
-&Scoped-define FRAME-NAME fr-details
-&Scoped-define SELF-NAME CtrlFrame
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL CtrlFrame wn-ship_details OCX.KeyDown
-PROCEDURE CtrlFrame.ComboBox.KeyDown .
-/*------------------------------------------------------------------------------
-  Purpose:     
-  Parameters:  Required for OCX.
-    KeyCode
-    Shift
-  Notes:       
-------------------------------------------------------------------------------*/
-  DEFINE INPUT-OUTPUT PARAMETER p-KeyCode AS INTEGER NO-UNDO.
-  DEFINE INPUT        PARAMETER p-Shift   AS INTEGER NO-UNDO.
-
-  DEFINE VARIABLE               lContinue AS LOGICAL NO-UNDO.
-
-
-  IF p-KeyCode = 13 THEN /* Enter Key - Corresponds to RETURN */
-  DO:
-/*    RUN GenericTriggerCall IN THIS-PROCEDURE*/
-/*      ( INPUT "RETURN",                     */
-/*        INPUT "Dimension Combo" ).          */
-    APPLY 'entry' TO fiPrice IN FRAME fr-details.
-    RETURN NO-APPLY.
-  END.
-
-END PROCEDURE.
-
-/* _UIB-CODE-BLOCK-END */
-&ANALYZE-RESUME
-
-
-&Scoped-define FRAME-NAME frExplship
 &Scoped-define SELF-NAME fi-adf
 &ANALYZE-SUSPEND _UIB-CODE-BLOCK _CONTROL fi-adf wn-ship_details
 ON ENTRY OF fi-adf IN FRAME frExplship
@@ -3688,7 +3621,7 @@ END.
 
 &UNDEFINE SELF-NAME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CUSTOM _MAIN-BLOCK wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _CUSTOM _MAIN-BLOCK wn-ship_details
 
 
 /* ***************************  Main Block  *************************** */
@@ -3767,240 +3700,68 @@ DO:
   {waitoff.i}
 END.
 
+/* kem - undo
 ON LEAVE OF temp-ship-details.dDisplayQty IN BROWSE br-shipdetails
 DO:
-   DEFINE VARIABLE iRow                   AS INTEGER     NO-UNDO INIT 1.
-   DEFINE VARIABLE rNextRowRecid          AS RECID       NO-UNDO.
-   DEFINE VARIABLE rTempShipRowID         AS ROWID       NO-UNDO.
-   DEFINE VARIABLE lLastRow               AS LOGICAL     NO-UNDO.
-   DEFINE VARIABLE rTempShipRecID         AS RECID       NO-UNDO.
-   DEFINE VARIABLE dPulledQty             AS DECIMAL     NO-UNDO.
-   DEFINE VARIABLE dDummy                 AS DECIMAL     NO-UNDO.
-   DEFINE VARIABLE lCompleted             AS LOGICAL     NO-UNDO INIT FALSE.
-   DEFINE VARIABLE rCurrentRecid          AS RECID       NO-UNDO.
-
-   DEFINE BUFFER   bfTempShip           FOR temp-ship-details.
-
-
-   iRow = br-shipdetails:FOCUSED-ROW IN FRAME {&FRAME-NAME}.
-
-   IF br-shipdetails:NUM-SELECTED-ROWS > 0 THEN
-   DO:
-     IF br-shipdetails:FETCH-SELECTED-ROW(1) IN FRAME {&FRAME-NAME} THEN.
-   END.
-   ELSE
-     RETURN.
-
-   IF NOT AVAILABLE temp-ship-details THEN
-     RETURN.
-
-   IF temp-ship-details.type = "CM" THEN
-   DO:
-     IF ROUND(DECIMAL(SELF:SCREEN-VALUE),4) > 0    THEN
-     DO:
-       ASSIGN
-         SELF:SCREEN-VALUE = STRING(ABS(DECIMAL(SELF:SCREEN-VALUE)) * -1).
-     END.
-   END.
-   ELSE
-   DO:
-     IF ROUND(DECIMAL(SELF:SCREEN-VALUE),4) < 0 THEN
-     DO:
-       ASSIGN
-         SELF:SCREEN-VALUE = STRING(ABS(DECIMAL(SELF:SCREEN-VALUE))).
-     END.
-   END.
-
-   /*Checks if any changes were made and if not returns to the new selected line*/
-   IF ROUND(DECIMAL(SELF:SCREEN-VALUE),4) = ROUND(gdDetailTallyQty,4) THEN
-     RETURN.
-
-   ASSIGN
-     rTempShipRecID = temp-ship-details.rec.
-
-   ASSIGN
-     rTempShipRowID = ROWID(temp-ship-details).
-
-   /* if we only have 1 rec, then no need setting next row */
-   IF NUM-RESULTS("br-shipdetails") < 2 THEN
-     rNextRowRecid = ?.
-   ELSE
-   DO:
-     /* set up the next row to display here before we process anything */
-     FIND bfTempShip WHERE
-          bfTempShip.rec = rTempShipRecID NO-LOCK NO-ERROR.
-
-     FIND NEXT bfTempShip NO-LOCK NO-ERROR.
-
-     /* if we find the next rec, then assign it */
-     IF AVAILABLE bfTempShip THEN
-       rNextRowRecid = bfTempShip.rec.
-     ELSE
-       /* but if it wasn't found, it means the rec was for the last row so let's set the last flag to true */
-       ASSIGN
-         rNextRowRecid = rTempShipRecID
-         lLastRow      = TRUE.
-   END.
-
-   /* If there is a screen widget that has a trigger fire where this code block is not
-      desired, then enter a line similar to the following to RETURN from this ON LEAVE.
-
-      IF LAST-EVENT:WIDGET-ENTER = bt-close:HANDLE IN FRAME {&FRAME-NAME} THEN RETURN. */
-
-   IF LAST-EVENT:WIDGET-ENTER = bt-delete:HANDLE IN FRAME {&FRAME-NAME} THEN RETURN.
-   IF LAST-EVENT:WIDGET-ENTER = bt-update_detail:HANDLE IN FRAME {&FRAME-NAME} THEN RETURN.
-
-   IF ROUND(gdDetailTallyQty,4) <> ROUND(DECIMAL(SELF:SCREEN-VALUE),4) THEN
-   DO:
-     ASSIGN
-       rCurrentRecid = temp-ship-details.rec.
-
-     IF NUM-RESULTS("br-shipdetails") > 0 AND
-        br-shipdetails:NUM-SELECTED-ROWS IN FRAME {&FRAME-NAME} = 1 THEN
-     DO:
-       {waiton.i}
-
-       dPulledQty = DECIMAL(temp-ship-details.dDisplayQty:SCREEN-VALUE IN BROWSE br-shipdetails).
-
-       IF NOT AVAILABLE temp-ship-details THEN
-         FIND FIRST temp-ship-details WHERE
-                    temp-ship-details.rec = rCurrentRecid
-                    NO-LOCK NO-ERROR.
-
-       ASSIGN
-         glByPassEntryTrigger2 = YES.
-
-       EMPTY TEMP-TABLE ttTrackSelected NO-ERROR.
-
-       /*DO NOT run on appserver as this displays windows/messages*/
-       RUN so/sishipdetailupd.p PERSISTENT
-         ( INPUT gscSessionContextID,
-           INPUT CURRENT-WINDOW,
-           INPUT THIS-PROCEDURE,
-           INPUT ?,
-           INPUT "explship",
-           INPUT YES, /*Allow UI*/
-           INPUT temp-ship-details.so_id_sysid,
-           INPUT temp-ship-details.so_id,
-           INPUT temp-ship-details.sequence,
-           INPUT temp-ship-details.ship-num,
-           INPUT g-tally_qty,
-           INPUT gdDetailTallyQty,
-           INPUT DECIMAL(SELF:SCREEN-VALUE),
-           INPUT 0, /*WMS Seq*/
-           INPUT rCurrentRecid,
-           INPUT rNextRowRecid,
-           INPUT iRow,
-           INPUT lLastRow,
-           INPUT gcTallyMsg,
-           INPUT 0, /*Thickness */
-           INPUT 0, /*Width     */
-           INPUT 0, /*Length    */
-           INPUT 0, /*PieceCount*/
-           INPUT DATASET dsOrigDetailTallyDummy,
-           INPUT DATASET dsTempShipDet ).
-
-       /* make sure the current record stays in scope, to let the leave trigger
-          finish without errors */
-       FIND FIRST temp-ship-details WHERE
-                  temp-ship-details.rec = rCurrentRecid
-                  NO-LOCK NO-ERROR.
-
-       RETURN NO-APPLY.
-     END. /* num-results */
-   END. /* qty changed */
-   ELSE
-   DO:
-      /* represents last row in browser...so go to first row */
-      IF NUM-RESULTS("br-shipdetails") > 0 AND
-         NUM-RESULTS("br-shipdetails") = iRow THEN
-      DO:
-         IF NUM-RESULTS("br-shipdetails") > 0 THEN
-         DO:
-            IF br-shipdetails:DESELECT-ROWS() THEN.
-            IF br-shipdetails:SELECT-ROW(1) THEN.
-         END.
-
-         APPLY "ENTRY" TO temp-ship-details.dDisplayQty IN BROWSE br-shipdetails.
-         APPLY "ROW-ENTRY" TO br-shipdetails.
-      END.
-   END.
-
+  DEFINE VARIABLE dShipmentQty   AS DECIMAL NO-UNDO.
+  
+  dShipmentQty = DECIMAL(temp-ship-details.dDisplayQty:SCREEN-VALUE IN BROWSE br-shipdetails).
+  
+  IF br-shipdetails:NUM-SELECTED-ROWS IN FRAME {&FRAME-NAME} > 0 THEN
+  DO:
+    IF br-shipdetails:FETCH-SELECTED-ROW(1) IN FRAME {&FRAME-NAME} THEN.
+  END.
+  ELSE
+    RETURN.
+    
+  RUN UpdateShipmentQty
+    ( INPUT grCurrentRECID,
+      INPUT br-shipdetails:FOCUSED-ROW IN FRAME {&FRAME-NAME},
+      INPUT TRUE,
+      INPUT FALSE,
+      input-output dShipmentQty, ).
+    
+  FIND FIRST temp-ship-details WHERE
+             temp-ship-details.rec = grCurrentRECID
+             NO-LOCK NO-ERROR. 
+             
+  temp-ship-details.dDisplayQty:SCREEN-VALUE IN BROWSE br-shipdetails = STRING(ipdNewShipmentQty).
+  
 END. /* leave of temp-ship-details.dDisplayQty */
+*/
 
-/*ON LEAVE OF temp-ship-details.disp_price IN BROWSE br-shipdetails                            */
-/*DO:                                                                                          */
-/*  RUN LeavePrice( INPUT temp-ship-details.disp_price:SCREEN-VALUE IN BROWSE br-shipdetails ).*/
-/*END.                                                                                         */
-
-
-ON LEAVE OF fiPrice IN FRAME fr-details
+ON LEAVE OF temp-ship-details.disp_price IN BROWSE br-shipdetails
 DO:
-  RUN LeavePrice( fiPrice:SCREEN-VALUE IN FRAME fr-details  ).
+  RUN LeavePrice( INPUT temp-ship-details.disp_price:SCREEN-VALUE IN BROWSE br-shipdetails ).
 END.
 
-/*ON ENTER OF temp-ship-details.disp_price-uom IN BROWSE br-shipdetails*/
-/*DO:                                                                  */
-/*  RUN ChoosePriceUOM.                                                */
-/*  RETURN NO-APPLY.                                                   */
-/*END.                                                                 */
-
-ON ENTER OF btPriceUOMDetails IN FRAME fr-details 
+ON ENTER OF temp-ship-details.disp_price-uom IN BROWSE br-shipdetails
 DO:
   RUN ChoosePriceUOM.
   RETURN NO-APPLY.
 END.
 
-
 ON ENTER OF temp-ship-details.dDisplayQty IN BROWSE br-shipdetails
 DO:
-  APPLY "LEAVE" TO temp-ship-details.dDisplayQty IN BROWSE br-shipdetails.
-  RETURN NO-APPLY.
+   APPLY "LEAVE" TO temp-ship-details.dDisplayQty IN BROWSE br-shipdetails.
+   RETURN NO-APPLY.
 END.
 
-
-/*DBG not sure why we need this ???? */
-/*ON ENTER OF fiQty IN FRAME fr-details                                      */
-/*DO:                                                                        */
-/*   APPLY "LEAVE" TO fiQty IN FRAME fr-details.                             */
-/*   RETURN NO-APPLY.                                                        */
-/*END.                                                                       */
-
-
-/*ON LEAVE OF temp-ship-details.ext_price IN BROWSE br-shipdetails                                               */
-/*DO:                                                                                            */
-/*  RUN LeaveExtPrice( INPUT temp-ship-details.ext_price:SCREEN-VALUE IN BROWSE br-shipdetails ).*/
-/*END.                                                                                           */
-
-ON LEAVE OF fiExtPrice IN FRAME fr-details
+ON LEAVE OF temp-ship-details.ext_price IN BROWSE br-shipdetails
 DO:
-  RUN LeaveExtPrice( INPUT fiExtPrice:SCREEN-VALUE IN FRAME fr-details ).
+  RUN LeaveExtPrice( INPUT temp-ship-details.ext_price:SCREEN-VALUE IN BROWSE br-shipdetails ).
+  APPLY "ENTRY" TO temp-ship-details.dDisplayQty IN BROWSE br-shipdetails.
 END.
 
-
-ON RETURN OF br-shipdetails IN FRAME frExplship
+ON CTRL-ALT-S ANYWHERE
 DO:
-  APPLY  "MOUSE-SELECT-DBLCLICK" TO BROWSE br-shipdetails.
-  RETURN NO-APPLY.  
+  // kem - remove
+  RUN SaveLineUpdateChanges( INPUT FALSE ).
 END.
 
-
-ON RETURN OF fiItem , fiQty  IN FRAME fr-details
+ON CTRL-ALT-O ANYWHERE 
 DO:
-  APPLY "ENTRY" TO fiPrice IN FRAME fr-details.
-  RETURN NO-APPLY.
-END. 
-
-ON RETURN OF fiPrice IN FRAME fr-details
-DO:
-  APPLY "ENTRY" TO btSaveDetails IN FRAME fr-details.
-  RETURN NO-APPLY.  
-END.    
-
-ON TAB OF btSaveNextDetails IN FRAME fr-details
-DO:
-  APPLY "ENTRY" TO fiQty IN FRAME fr-details.
-  RETURN NO-APPLY.    
+  RUN ChooseUOM.
 END.
 
 /* Now enable the interface and wait for the exit condition.            */
@@ -4014,49 +3775,14 @@ DO ON ERROR   UNDO MAIN-BLOCK, LEAVE MAIN-BLOCK
   bt-tallycalc:VISIBLE = FALSE.
   RUN toggle_cost_visible.
 
-  RUN LoadSoParameters.
-  
-  FOR FIRST ttParamSO NO-LOCK:
-    ASSIGN
-      tbDispAllocChgCost:CHECKED = ttParamSO.show_allocated_amt_in_staging
-      glLineUpdateMode           = ttParamSO.allow_line_update_mode_staging
-    .
-  END.
-/*dbg*/  
-glLineUpdateMode = yes. 
   ASSIGN
     {&WINDOW-NAME}:MAX-HEIGHT  = SESSION:HEIGHT
     {&WINDOW-NAME}:MAX-WIDTH   = SESSION:WIDTH
     FRAME {&FRAME-NAME}:HEIGHT = {&WINDOW-NAME}:HEIGHT
     FRAME {&FRAME-NAME}:WIDTH  = {&WINDOW-NAME}:WIDTH.
 
-  IF NOT glLineUpdateMode THEN
-  DO WITH FRAME  {&frame-name}: 
-    
-    bt-update_detail:LOAD-IMAGE-UP( "images/specify_commit.ico":U).
-    bt-update_detail:LOAD-IMAGE-INSENSITIVE ("images/specify_commit_g.ico":U).
-    bt-update_detail:TOOLTIP = "Specify commit/uncommit".   
-    
-    ASSIGN      
-      btSpecifyTags:COLUMN = 27.40
-      btViewMsgs:COLUMN = 32.40
-      btSerNumEnt:COLUMN = 37.60
-      btSelectAll:COLUMN = 42.80
-      btUnitData:COLUMN  = 48.00      
-    .
-  END.
-
-  FRAME fr-details:HIDDEN = TRUE.
-       
-  FRAME fr-details:MOVE-TO-BOTTOM ().           
-
   RUN enable_UI.
   {allwmainrungiminit.i}
-  
-  ASSIGN 
-    bt-commit:VISIBLE IN FRAME {&FRAME-NAME} = glLineUpdateMode
-    bt-commit:SENSITIVE IN FRAME {&FRAME-NAME} = glLineUpdateMode
-  .
 
   RUN SetWindowSize
   ( INPUT "Staging Details",
@@ -4064,21 +3790,26 @@ glLineUpdateMode = yes.
     INPUT  "",
     INPUT  "",
     INPUT  {&WINDOW-NAME} ).
-    
 
-    IF {getagilprop.i &PropList='ApplyCurrencyAR'} <> "YES" THEN
-      ASSIGN
-        glUsingCurrency      = NO
-        fiCurrencyLbl:HIDDEN IN FRAME frExplship = YES
-        fiCurrency   :HIDDEN IN FRAME frExplship = YES.
-    ELSE
-      ASSIGN
-        glUsingCurrency            = YES
-        fiCurrencyLbl:SCREEN-VALUE IN FRAME frExplship = "Currency"
-        fiCurrencyLbl:HIDDEN IN FRAME frExplship       = NO
-        fiCurrency   :HIDDEN IN FRAME frExplship       = NO.
+  IF {getagilprop.i &PropList='ApplyCurrencyAR'} <> "YES" THEN
+    ASSIGN
+      glUsingCurrency      = NO
+      fiCurrencyLbl:HIDDEN = YES
+      fiCurrency   :HIDDEN = YES.
+  ELSE
+    ASSIGN
+      glUsingCurrency            = YES
+      fiCurrencyLbl:SCREEN-VALUE = "Currency"
+      fiCurrencyLbl:HIDDEN       = NO
+      fiCurrency   :HIDDEN       = NO.
 
-  
+  FOR FIRST param_so WHERE
+            param_so.system_id = gcCategoryList[{&param_so-sys-id}]
+            NO-LOCK:
+    ASSIGN
+      tbDispAllocChgCost:CHECKED = param_so.show_allocated_amt_in_staging.
+  END.
+
   RUN sys/sifetchparamsystm.p ON SERVER g-Appsrvr
     ( INPUT "",
       INPUT  {getagilprop.i &PropList="'currentBranch'":U},
@@ -4094,21 +3825,21 @@ glLineUpdateMode = yes.
   DEFINE VARIABLE lAllowAgilityMobilePOD AS LOGICAL     NO-UNDO INIT FALSE.
 
   ASSIGN
-    btDisplayOrder:SENSITIVE IN FRAME {&FRAME-NAME} = goSecurityManager:IsMenuItemGranted("so_sales_order_entry","mn_salesord.p")
-    btCustInfo    :SENSITIVE IN FRAME {&FRAME-NAME} = goSecurityManager:IsMenuItemGranted("so_customer_information","mn_custinfo.p")
+    btDisplayOrder:SENSITIVE = goSecurityManager:IsMenuItemGranted("so_sales_order_entry","mn_salesord.p")
+    btCustInfo    :SENSITIVE = goSecurityManager:IsMenuItemGranted("so_customer_information","mn_custinfo.p")
     gcCurrentUser            = {getagilprop.i &PropList="'currentUserLogin'":U}
     lAllowAgilityMobilePOD   = ({checklicense.i &Identifier = '"Agility Mobile POD"' &AlertUser = NO}).
     
   IF NOT goSecurityManager:IsMenuItemGranted("dp_dispatch_entry","mn_dp_entmenu.p") THEN
-    btDispatch:SENSITIVE IN FRAME frExplship = FALSE. 
+    DISABLE btDispatch WITH FRAME {&FRAME-NAME}.
 
   IF lAllowAgilityMobilePOD THEN
     ASSIGN
-      btnImages:VISIBLE IN FRAME {&FRAME-NAME}   = YES
-      btnImages:SENSITIVE IN FRAME {&FRAME-NAME} = YES.
+      btnImages:VISIBLE   = YES
+      btnImages:SENSITIVE = YES.
   ELSE
     ASSIGN
-      btnImages:VISIBLE IN FRAME {&FRAME-NAME} = NO.
+      btnImages:VISIBLE = NO.
 
   {waitoff.i}
 
@@ -4139,7 +3870,7 @@ END.
 
 /* **********************  Internal Procedures  *********************** */
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE allwmainClosePostDisable wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE allwmainClosePostDisable wn-ship_details
 PROCEDURE allwmainClosePostDisable :
 /* -----------------------------------------------------------
   Purpose:
@@ -4158,14 +3889,15 @@ PROCEDURE allwmainClosePostDisable :
   IF VALID-OBJECT(goSecurityManager) THEN 
     DELETE OBJECT goSecurityManager.
     
-  IF VALID-OBJECT(goSODetailModel) THEN 
-    DELETE OBJECT goSODetailModel.
+  IF VALID-OBJECT(goSODetailPresenter) THEN
+    DELETE OBJECT goSODetailPresenter.
+    
 END PROCEDURE.
 
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE allwmainClosePreDisable wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE allwmainClosePreDisable wn-ship_details
 PROCEDURE allwmainClosePreDisable :
 /* -----------------------------------------------------------
   Purpose:
@@ -4200,7 +3932,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE allwmainWindowClose wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE allwmainWindowClose wn-ship_details
 PROCEDURE allwmainWindowClose :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -4218,7 +3950,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE allwmainWindowEntry wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE allwmainWindowEntry wn-ship_details
 PROCEDURE allwmainWindowEntry :
 /* -----------------------------------------------------------
   Purpose:
@@ -4246,7 +3978,26 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ApplyEntry wn-ship_details 
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ApplyCancel wn-ship_details
+PROCEDURE ApplyCancel:
+/*------------------------------------------------------------------------------
+ Purpose:
+ Notes:
+------------------------------------------------------------------------------*/
+
+  IF giLineUpdateSequence = 0   OR 
+     CancelLineUpdateChanges()  THEN 
+    RUN ClearLineUpdate.
+
+END PROCEDURE.
+  
+/* _UIB-CODE-BLOCK-END */
+&ANALYZE-RESUME
+
+
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ApplyEntry wn-ship_details
 PROCEDURE ApplyEntry :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -4264,214 +4015,31 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE btCommitProcedure wn-ship_details 
-PROCEDURE btCommitProcedure :
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ApplyFocus wn-ship_details
+PROCEDURE ApplyFocus:
 /*------------------------------------------------------------------------------
  Purpose:
  Notes:
 ------------------------------------------------------------------------------*/
-  DEFINE INPUT PARAMETER ipcCalledFrom AS CHARACTER NO-UNDO. 
+DEFINE INPUT PARAMETER ipcWidgetFocus   AS CHARACTER  NO-UNDO.
 
-  DEFINE VARIABLE l-rec                AS  RECID      NO-UNDO.
-  DEFINE VARIABLE l-curr-row           AS  INTEGER    NO-UNDO INIT 1.
-  DEFINE VARIABLE cFunction            AS  CHARACTER  NO-UNDO.
-  DEFINE VARIABLE iPrevPOID            AS  INTEGER    NO-UNDO INIT -1.
-  DEFINE VARIABLE cSeqList             AS  CHARACTER  NO-UNDO INIT "".
-  DEFINE VARIABLE cSOIDsysid           AS  CHARACTER  NO-UNDO.
-  DEFINE VARIABLE iSOID                AS  INTEGER    NO-UNDO.
-  DEFINE VARIABLE iShipNum             AS  INTEGER    NO-UNDO.
-  DEFINE VARIABLE iCtr                 AS  INTEGER    NO-UNDO.
-  DEFINE VARIABLE lReturn              AS  LOGICAL    NO-UNDO.
-  DEFINE VARIABLE lCancel              AS  LOGICAL    NO-UNDO.
-  DEFINE VARIABLE iNumRows             AS  INTEGER    NO-UNDO.
-  DEFINE VARIABLE lBuildShipByPO       AS  LOGICAL    NO-UNDO INIT NO.
-  DEFINE VARIABLE cMessage             AS  CHARACTER  NO-UNDO.
-  DEFINE VARIABLE lDummy               AS  LOGICAL    NO-UNDO.
-  DEFINE VARIABLE lOKtoContinue        AS  LOGICAL    NO-UNDO.
-
-  DEFINE BUFFER   bl-temp-ship-details FOR temp-ship-details.
-
-
-  IF glMoveDetail THEN
-  DO:
-    IF br-shipdetails:NUM-SELECTED-ROWS IN FRAME {&FRAME-NAME} = 0 THEN
-    DO:
-      RUN sysinfok.p
-        ( INPUT "select_rows",
-          INPUT "move" ).
-      RETURN NO-APPLY.
-    END. /* IF br-shipdetails:NUM-SELECTED-ROWS IN FRAME {&FRAME-NAME} = 0 THEN */
-    ELSE
-    DO:
-      ASSIGN
-        lBuildShipByPO = NO.
-
-      FOR FIRST ttParamSO NO-LOCK:
-        lBuildShipByPO = ttParamSO.direct_ship_by_po.
-      END.
-
-      DO iCtr = 1 TO br-shipdetails:NUM-SELECTED-ROWS:
-
-        ASSIGN
-          lReturn = br-shipdetails:FETCH-SELECTED-ROW(iCtr) NO-ERROR.
-
-        IF NOT AVAILABLE temp-ship-details THEN
-          NEXT.
-
-        IF temp-ship-details.shipping_rule = "Ship Direct" THEN
-        DO:
-          IF temp-ship-details.contract_prices_locked = YES THEN
-          DO:
-            RUN sysinfok.p
-              (INPUT "contractpriceslocked3",
-               INPUT "Quantity|moved").
-
-            RETURN.
-          END.
-
-          FIND FIRST tt-ship-details-original WHERE
-                     tt-ship-details-original.rShipDetRecid = temp-ship-details.rec
-                     NO-LOCK.
-
-          EMPTY TEMP-TABLE ttTallyChange.
-
-          /* We do not need ttTallyChange here because if the line has been at
-             least partially staged, picked, or invoiced we don't allow this change */
-          RUN chgreqso.p
-            ( INPUT  gscSessionContextId,
-              INPUT  "SO",
-              INPUT  temp-ship-details.so_id,
-              INPUT  temp-ship-details.so_id_sysid,
-              INPUT  temp-ship-details.sequence,
-              INPUT  "Move Item",
-              INPUT  "", /* called from */
-              INPUT  0, /* orig tot qty */
-              INPUT  0,
-              INPUT  ABS((tt-ship-details-original.orig-stock-qty / temp-ship-details.disp_qty_conv)),
-              INPUT  temp-ship-details.uom,
-              INPUT  temp-ship-details.uom_ptr,
-              INPUT  temp-ship-details.uom_ptr_sysid,
-              INPUT  "",
-              INPUT  0,
-              INPUT  0,
-              INPUT  NO,
-              INPUT  TABLE ttTallyChange,
-              OUTPUT cMessage,
-              OUTPUT lDummy,
-              OUTPUT lOKtoContinue,
-              OUTPUT lDummy ).
-
-          IF cMessage <> "" THEN
-          DO:
-            MESSAGE cMessage
-              VIEW-AS ALERT-BOX ERROR BUTTONS OK.
-          END. /* IF cMessage <> "" THEN */
-
-          IF lOKtoContinue = NO THEN
-          DO:
-            ASSIGN
-              lReturn = br-shipdetails:FETCH-SELECTED-ROW(br-shipdetails:NUM-SELECTED-ROWS) NO-ERROR.
-
-            RETURN NO-APPLY.
-          END. /* IF lOKtoContinue = NO THEN */
-
-        END. /* IF temp-ship-details.shipping_rule = "Ship Direct" THEN */
-
-        ASSIGN
-          cSOIDsysid = temp-ship-details.so_id_sysid
-          iSOID      = temp-ship-details.so_id
-          iShipNum   = temp-ship-details.ship-num
-          cSeqList   = cSeqList + STRING(temp-ship-details.sequence) + CHR(3).
-
-        /* If we build shipments by PO then don't allow multiple lines with different PO number */
-        IF lBuildShipByPO = YES THEN
-        DO:
-          IF iPrevPOID = -1 THEN
-            ASSIGN
-              iPrevPOID = temp-ship-details.linked_po.
-          ELSE
-            IF iPrevPOID <> temp-ship-details.linked_po THEN
-            DO:
-              RUN sysinfok.p
-                ( INPUT "movemultiposhipmt",
-                  INPUT "" ).
-
-              ASSIGN
-                lReturn = br-shipdetails:FETCH-SELECTED-ROW(br-shipdetails:NUM-SELECTED-ROWS) NO-ERROR.
-
-              RETURN NO-APPLY.
-            END.
-        END. /* IF lBuildShipByPO = YES THEN */
-
-      END. /* DO iCtr... */
-
-      ASSIGN
-        cSeqList = RIGHT-TRIM(cSeqList,CHR(3))
-        iNumRows = 0.
-
-      FOR EACH bl-temp-ship-details NO-LOCK WHILE iNumRows < 2:
-        iNumRows = iNumRows + 1.
-      END.
-
-      glByPassEntryTrigger2 = YES.
-
-      CURRENT-WINDOW:SENSITIVE = NO.
-
-      RUN moveshipdtl.w
-        ( INPUT  lBuildShipByPO,
-          INPUT  iPrevPOID,
-          INPUT  cSOIDsysid,
-          INPUT  iSOID,
-          INPUT  iShipNum,
-          INPUT  cSeqList,
-          INPUT  (IF iNumRows > 1 THEN YES ELSE NO),
-          OUTPUT lCancel ).
-
-      CURRENT-WINDOW = {&WINDOW-NAME}.
-      CURRENT-WINDOW:SENSITIVE = YES.
-      APPLY "ENTRY" TO CURRENT-WINDOW.
-
-      glByPassEntryTrigger2 = NO.
-
-      IF lCancel = YES THEN
-        RETURN NO-APPLY.
-
-      RUN Build_Screen
-        ( INPUT ip-shiphead_rec,
-          INPUT ip-calling_module,
-          INPUT ip-context ).
-    END. /* IF br-shipdetails:NUM-SELECTED-ROWS...ELSE */
-  END.
-  ELSE
-  DO:
-    IF br-shipdetails:NUM-SELECTED-ROWS IN FRAME {&FRAME-NAME} = 0 THEN
-    DO:
-      RUN sysinfok.p
-        ( INPUT "select_rows",
-          INPUT "update" ).
-      RETURN NO-APPLY.
-    END. /* IF br-shipdetails:NUM-SELECTED-ROWS IN FRAME {&FRAME-NAME} = 0 THEN */
-
-    IF br-shipdetails:NUM-SELECTED-ROWS > 1 THEN
-    DO:
-      RUN sysinfok.p
-        ( INPUT "onerowfunc",
-          INPUT "" ).
-
-      RETURN NO-APPLY.
-    END.
-    glFromBtcommit = (ipcCalledFrom = "bt-commit").
-
-    APPLY "MOUSE-SELECT-DBLCLICK" TO br-shipdetails.
-
-  END.
+DEFINE VARIABLE lDummy AS LOGICAL NO-UNDO.
+// kem
+CASE ipcWidgetFocus:
+  WHEN "Price" THEN
+    lDummy = TRUE. //APPLY "ENTRY" TO fiPrice.
+    
+END CASE.
 
 END PROCEDURE.
-
+  
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE buildTempInvParams wn-ship_details 
+
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE buildTempInvParams wn-ship_details
 PROCEDURE buildTempInvParams :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -4527,7 +4095,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE build_screen wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE build_screen wn-ship_details
 PROCEDURE build_screen :
 /* -----------------------------------------------------------
   Purpose:  Display screen contents
@@ -5299,7 +4867,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE CalcDetailChargesAndGM wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE CalcDetailChargesAndGM wn-ship_details
 PROCEDURE CalcDetailChargesAndGM :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -5429,7 +4997,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE calc_adf wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE calc_adf wn-ship_details
 PROCEDURE calc_adf :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -5531,7 +5099,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE CallAssignStop wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE CallAssignStop wn-ship_details
 PROCEDURE CallAssignStop :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -5628,7 +5196,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE CallSpecifyCommitFinish wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE CallSpecifyCommitFinish wn-ship_details
 PROCEDURE CallSpecifyCommitFinish :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -5794,7 +5362,8 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE cancelShipment wn-ship_details 
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE cancelShipment wn-ship_details
 PROCEDURE cancelShipment :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -5918,7 +5487,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE change_branch wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE change_branch wn-ship_details
 PROCEDURE change_branch :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -5937,7 +5506,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE CheckBranchTransfer wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE CheckBranchTransfer wn-ship_details
 PROCEDURE CheckBranchTransfer :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -6031,7 +5600,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE CheckChanges wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE CheckChanges wn-ship_details
 PROCEDURE CheckChanges :
 /*------------------------------------------------------------------------------
   Purpose:  called from usodetal.w
@@ -6078,7 +5647,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE CheckPrintStatus wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE CheckPrintStatus wn-ship_details
 PROCEDURE CheckPrintStatus :
 /*------------------------------------------------------------------------------
   Purpose:  called from usodetal.w
@@ -6143,7 +5712,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE check_for_tally_calc wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE check_for_tally_calc wn-ship_details
 PROCEDURE check_for_tally_calc :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -6186,7 +5755,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ChooseBtDelete wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ChooseBtDelete wn-ship_details
 PROCEDURE ChooseBtDelete :
 /*------------------------------------------------------------------------------
   Purpose: 
@@ -6201,69 +5770,55 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ChoosePriceUOM wn-ship_details 
-PROCEDURE ChoosePriceUOM :
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ChoosePriceUOM wn-ship_details
+PROCEDURE ChoosePriceUOM:
 /*------------------------------------------------------------------------------
  Purpose:
  Notes:
 ------------------------------------------------------------------------------*/
   DEFINE VARIABLE lContinue           AS LOGICAL            NO-UNDO.
   
-  DEFINE VARIABLE lMultipleUOMs       AS LOGICAL            NO-UNDO.
-  
-  DEFINE VARIABLE cNewPriceUOMCode    AS CHARACTER          NO-UNDO.
-  DEFINE VARIABLE iNewPriceUOMPtr     AS INTEGER            NO-UNDO.
-  DEFINE VARIABLE cUOMType            AS CHARACTER          NO-UNDO.
-  DEFINE VARIABLE dConvFactor         AS DECIMAL            NO-UNDO.
-  
-  goSODetailModel:ChooseBtPriceUOMValidate
-    ( INPUT-OUTPUT DATASET dsErrorMsg,
-            OUTPUT lContinue ).
+  goSODetailPresenter:ChooseBtPriceUOM
+    ( INPUT temp-ship-details.item,
+      INPUT glAllowPCRefUOM,
+     OUTPUT lContinue ).
     
-  IF NOT ProcessMessages( INPUT "DisplayOnly" ) OR
-     lContinue = NO THEN
-    RETURN.
-     
-  lMultipleUOMs = goSODetailModel:MultipleDimensionsOrdered().
-  
-  RUN luomconv.w
-    ( INPUT  temp-ship-details.item,
-      INPUT  0,             /* ipiItemPtr, don't need if item is supplied */
-      INPUT  glAllowPCRefUOM AND NOT lMultipleUOMs,
-      INPUT  NO,       
-      OUTPUT cUOMType,      /* "Standard", "PC Ref", or "UNIT" */
-      OUTPUT cNewPriceUOMCode,
-      OUTPUT iNewPriceUOMPtr,
-      OUTPUT dConvFactor ).
-      
-  goSODetailModel:ChooseBtPriceUOMValidate2
-  ( INPUT cNewPriceUOMCode,
-    INPUT iNewPriceUOMPtr,
-    INPUT-OUTPUT DATASET dsErrorMsg,
-    OUTPUT lContinue ).
-    
-  IF NOT ProcessMessages( INPUT "DisplayOnly" ) OR
-     lContinue = NO THEN
-    RETURN.
-    
-  goSODetailModel:ChooseBtPriceUOM
-    ( INPUT cNewPriceUOMCode,
-      INPUT iNewPriceUOMPtr,
-      INPUT-OUTPUT DATASET dsErrorMsg,
-      OUTPUT lContinue ).
-    
-  IF NOT ProcessMessages( INPUT "DisplayOnly" ) OR
-     lContinue = NO THEN
-    RETURN.
-    
-  RUN RefreshLineEdit.
+  IF lContinue THEN 
+    RUN RefreshLineUpdate.
   
 END PROCEDURE.
-
+  
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ClearDtlHandle wn-ship_details 
+
+
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ChooseUOM wn-ship_details
+PROCEDURE ChooseUOM:
+/*------------------------------------------------------------------------------
+ Purpose:
+ Notes:
+------------------------------------------------------------------------------*/
+
+DEFINE VARIABLE lContinue           AS LOGICAL            NO-UNDO.
+  
+ChooseBTUOM( INPUT temp-ship-details.item,
+             INPUT glAllowPCRefUOM,
+            OUTPUT lContinue ).
+            
+  IF lContinue THEN 
+    RUN RefreshLineUpdate.                        
+
+END PROCEDURE.
+  
+/* _UIB-CODE-BLOCK-END */
+&ANALYZE-RESUME
+
+
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ClearDtlHandle wn-ship_details
 PROCEDURE ClearDtlHandle :
 /*------------------------------------------------------------------------------
   Purpose:  called from usodetal.w
@@ -6290,7 +5845,44 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE clearMsgHandle wn-ship_details 
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ClearLineUpdate wn-ship_details
+PROCEDURE ClearLineUpdate:
+/*------------------------------------------------------------------------------
+ Purpose:
+ Notes:
+------------------------------------------------------------------------------*/
+
+IF AVAILABLE(bltemp-ship-details) THEN 
+  RELEASE bltemp-ship-details.
+    
+ASSIGN 
+  grLineUpdateRECID     = ?
+  grOrigLineUpdateRECID = ?
+  giLineUpdateRow       = 0
+  glAllowPCRefUOM       = FALSE
+  glAllowUnitUOM        = FALSE
+  giLineUpdateSequence  = 0.
+
+// kem - set widgets to empty
+
+RUN SetOrigLineUpdateValues
+  ( INPUT 0,
+    INPUT 0,
+    INPUT "",
+    INPUT "",
+    INPUT 0,
+    INPUT "",
+    INPUT 0 ).
+    
+END PROCEDURE.
+  
+/* _UIB-CODE-BLOCK-END */
+&ANALYZE-RESUME
+
+
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE clearMsgHandle wn-ship_details
 PROCEDURE clearMsgHandle :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -6305,7 +5897,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE CloseMessageWindow wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE CloseMessageWindow wn-ship_details
 PROCEDURE CloseMessageWindow :
 /* -----------------------------------------------------------
   Purpose:
@@ -6327,7 +5919,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE commitToLocation wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE commitToLocation wn-ship_details
 PROCEDURE commitToLocation :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -6932,7 +6524,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE CompleteUpdateStatus wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE CompleteUpdateStatus wn-ship_details
 PROCEDURE CompleteUpdateStatus :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -6987,45 +6579,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE control_load wn-ship_details  _CONTROL-LOAD
-PROCEDURE control_load :
-/*------------------------------------------------------------------------------
-  Purpose:     Load the OCXs    
-  Parameters:  <none>
-  Notes:       Here we load, initialize and make visible the 
-               OCXs in the interface.                        
-------------------------------------------------------------------------------*/
-
-&IF "{&OPSYS}" = "WIN32":U AND "{&WINDOW-SYSTEM}" NE "TTY":U &THEN
-DEFINE VARIABLE UIB_S    AS LOGICAL    NO-UNDO.
-DEFINE VARIABLE OCXFile  AS CHARACTER  NO-UNDO.
-
-OCXFile = SEARCH( "aes9773857203694707572.wrx":U ).
-IF OCXFile = ? THEN
-  OCXFile = SEARCH(SUBSTRING(THIS-PROCEDURE:FILE-NAME, 1,
-                     R-INDEX(THIS-PROCEDURE:FILE-NAME, ".":U), "CHARACTER":U) + "wrx":U).
-
-IF OCXFile <> ? THEN
-DO:
-  ASSIGN
-    chCtrlFrame = CtrlFrame:COM-HANDLE
-    UIB_S = chCtrlFrame:LoadControls( OCXFile, "CtrlFrame":U)
-    CtrlFrame:NAME = "CtrlFrame":U
-  .
-  RUN initialize-controls IN THIS-PROCEDURE NO-ERROR.
-END.
-ELSE MESSAGE "aes9773857203694707572.wrx":U SKIP(1)
-             "The binary control file could not be found. The controls cannot be loaded."
-             VIEW-AS ALERT-BOX TITLE "Controls Not Loaded".
-
-&ENDIF
-
-END PROCEDURE.
-
-/* _UIB-CODE-BLOCK-END */
-&ANALYZE-RESUME
-
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE create-temp wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE create-temp wn-ship_details
 PROCEDURE create-temp :
 /* -----------------------------------------------------------
   Purpose:  open query associated with shipments/item_reserved browser
@@ -7067,7 +6621,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE CreditCheck wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE CreditCheck wn-ship_details
 PROCEDURE CreditCheck :
 /* -----------------------------------------------------------
   Purpose:
@@ -7114,7 +6668,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE CustomDateLeave wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE CustomDateLeave wn-ship_details
 PROCEDURE CustomDateLeave :
 /* -----------------------------------------------------------
   Purpose:
@@ -7174,7 +6728,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE DefaultYearPeriod wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE DefaultYearPeriod wn-ship_details
 PROCEDURE DefaultYearPeriod :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -7265,7 +6819,7 @@ PROCEDURE disable_UI :
   Purpose:     DISABLE the User Interface
   Parameters:  <none>
   Notes:       Here we clean-up the user-interface by deleting
-               dynamic widgets we have created and/or hide 
+               dynamic widgets we have created and/or hide
                frames.  This procedure is usually called when
                we are ready to "clean-up" after running.
 ------------------------------------------------------------------------------*/
@@ -7286,43 +6840,40 @@ PROCEDURE enable_UI :
   Notes:       Here we display/view/enable the widgets in the
                user-interface.  In addition, OPEN all queries
                associated with each FRAME and BROWSE.
-               These statements here are based on the "Other 
+               These statements here are based on the "Other
                Settings" section of the widget Property Sheets.
 ------------------------------------------------------------------------------*/
-  RUN control_load.
 
   {&OPEN-QUERY-frExplship}
   GET FIRST frExplship.
-  DISPLAY fi-cust_id fi-shipto fi-order_date fi-ship_date fiExpDate fiCredStat 
-          fi-route tbHold fi-stop fiReviewStatus fiDriver fiEstimatedProfit 
-          fiCurrency fi-adf fiProNumber tbDispAllocChgCost cbDisplayUOM 
-          fiInvoiceDate cbStatus cbInvoicePeriod cbInvoiceYear tbPrintDelvTick 
-          fistagingstatuslbl fiStagingstatus fiReviewStatusLbl fiCurrencyLbl 
-          fi-asterisk fiProNumberLbl fi-adf-message fiInvPeriodText fiStatusText 
-          fiInvoiceDateLabel fiStatusLabel 
+  DISPLAY fiCurrencyLbl fiStagingstatus fi-ship_date fiExpDate fiCredStat
+          fi-route tbHold fi-stop fi-cust_id fiReviewStatus fiDriver
+          fiEstimatedProfit fi-adf fiProNumber tbDispAllocChgCost
+          fistagingstatuslbl cbDisplayUOM fi-asterisk fiInvoiceDate
+          cbInvoicePeriod cbInvoiceYear cbStatus tbPrintDelvTick fi-shipto
+          fiCurrency fi-order_date fiStatusText fi-adf-message fiInvPeriodText
+          fiStatusLabel fiInvoiceDateLabel fiReviewStatusLbl fiProNumberLbl
       WITH FRAME frExplship IN WINDOW wn-ship_details.
-  ENABLE RECT-55 RECT-82 RECT-54 btSave btShipDtlInfo btDisplayOrder btDispatch 
-         btHdrMsgs btCancelStaging btCustInfo fi-ship_date btCalendarDt 
-         fiExpDate btCalendarExpDt btRoute fi-route tbHold fi-stop btDriverLoc 
-         fiDriver fi-adf fiProNumber tbDispAllocChgCost btAdd bt-update_detail 
-         bt-delete btViewOthChgCst btSelectLoc bt-commit btSpecifyTags 
-         btViewMsgs btSerNumEnt btSelectAll btUnitData btPodAccept btPodReject 
-         cbDisplayUOM br-shipdetails fiInvoiceDate btCalendarInvDt cbStatus 
-         cbInvoicePeriod cbInvoiceYear btDefault tbPrintDelvTick bt-prev 
-         bt-next btUpdateStatus fistagingstatuslbl fiStagingstatus 
-         fiCurrencyLbl fi-asterisk fiProNumberLbl fiInvoiceDateLabel 
-         fiStatusLabel 
+  ENABLE btSave btShipDtlInfo btDisplayOrder fiCurrencyLbl btDispatch btHdrMsgs
+         btCancelStaging btCustInfo fiStagingstatus fi-ship_date btCalendarDt
+         fiExpDate btCalendarExpDt fi-route btRoute tbHold fi-stop fiDriver
+         btDriverLoc fi-adf fiProNumber tbDispAllocChgCost btAdd
+         bt-update_detail bt-delete btViewOthChgCst fistagingstatuslbl
+         btSelectLoc btSpecifyTags btViewMsgs btSerNumEnt btSelectAll
+         btUnitData btPodAccept btPodReject cbDisplayUOM fi-asterisk
+         br-shipdetails fiInvoiceDate btCalendarInvDt cbInvoicePeriod
+         cbInvoiceYear btDefault cbStatus tbPrintDelvTick btUpdateStatus
+         bt-prev bt-next fiStatusLabel fiInvoiceDateLabel fiProNumberLbl
+         RECT-82 RECT-54
       WITH FRAME frExplship IN WINDOW wn-ship_details.
   {&OPEN-BROWSERS-IN-QUERY-frExplship}
-  {&OPEN-BROWSERS-IN-QUERY-fr-details}
-  FRAME fr-details:SENSITIVE = NO.
   VIEW wn-ship_details.
 END PROCEDURE.
 
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE find_cost wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE find_cost wn-ship_details
 PROCEDURE find_cost :
 /*------------------------------------------------------------------------------
   Purpose:     Determines which cost should be displayed based on cost_desig.
@@ -7354,7 +6905,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE GetLocalProfile wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE GetLocalProfile wn-ship_details
 PROCEDURE GetLocalProfile :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -7372,7 +6923,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE get_new_cost wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE get_new_cost wn-ship_details
 PROCEDURE get_new_cost :
 /*------------------------------------------------------------------------------
   Purpose:     Gets the cost for updating the temp-ship-details.cost field
@@ -7398,7 +6949,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE get_parameters wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE get_parameters wn-ship_details
 PROCEDURE get_parameters :
 /*------------------------------------------------------------------------------
   Purpose:     Get inventory parameters for requested item.
@@ -7428,7 +6979,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE get_screen_value wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE get_screen_value wn-ship_details
 PROCEDURE get_screen_value :
 /*------------------------------------------------------------------------------
   Purpose: Get specific screen values : called from usodetal.w
@@ -7534,7 +7085,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE give_focus wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE give_focus wn-ship_details
 PROCEDURE give_focus :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -7549,7 +7100,8 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE hdr_pass wn-ship_details 
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE hdr_pass wn-ship_details
 PROCEDURE hdr_pass :
 /*------------------------------------------------------------------------------
   Purpose: called from usodetal.w
@@ -7567,7 +7119,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE hdr_prc wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE hdr_prc wn-ship_details
 PROCEDURE hdr_prc :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -7599,7 +7151,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE hideWidgets wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE hideWidgets wn-ship_details
 PROCEDURE hideWidgets :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -7642,28 +7194,23 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE initialize-controls wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE initialize-controls wn-ship_details
 PROCEDURE initialize-controls :
 /*------------------------------------------------------------------------------
   Purpose: Set defaults for and OCX controls loaded
   Parameters:  <none>
   Notes:
 ------------------------------------------------------------------------------*/
-  ASSIGN
-    gchDimensionsComboBox               = chCtrlFrame:ComboBox.
-    
-    sys.ComboBoxHelper:InitComboBox(gchDimensionsComboBox,0,NO).
-  
-    sys.ComboBoxHelper:CLEAR(gchDimensionsComboBox).
-
 
 END PROCEDURE.
 
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE InitializeSecurityObjects wn-ship_details 
-PROCEDURE InitializeSecurityObjects :
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE InitializeSecurityObjects wn-ship_details
+PROCEDURE InitializeSecurityObjects:
+
 goSecurityManager = NEW sys.SecurityManager().
 
 goSecurityManager:CreateAction("Sales Orders-Quotes","comtstat","can_delete_staging").
@@ -7691,11 +7238,54 @@ goSecurityManager:CreateAction("Sales Orders-Quotes","explship","adjust_parent_p
 goSecurityManager:CreateAction("Sales Orders-Quotes","explship","adjust_parent_printed_wo").
         
 END PROCEDURE.
-
+  
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE inv_affect wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE InitialLineUpdateFields wn-ship_details
+PROCEDURE InitialLineUpdateFields:
+/*------------------------------------------------------------------------------
+ Purpose:
+ Notes:
+------------------------------------------------------------------------------*/
+
+DEFINE VARIABLE dQtyUOMConversionFactor     AS DECIMAL    NO-UNDO.
+DEFINE VARIABLE dSOOrderQty                 AS DECIMAL    NO-UNDO.
+
+IF NOT AVAILABLE(blttship_details_line_update) THEN
+DO:
+  MESSAGE "KEM" VIEW-AS ALERT-BOX.
+  RETURN.
+END.       
+
+{ common/qtyuomproc.i
+  &lAddErrorToTempTable = NO
+  &cItemSysid           = blttship_details_line_update.item_ptr_sysid
+  &iItemPtr             = blttship_details_line_update.item_ptr
+  &cUOMConvSysid        = blttship_details_line_update.order_uom_conv_ptr_sysid
+  &iConvertToUOMPtr     = blttship_details_line_update.order_uom_conv_ptr
+  &dOutputConvFactor    = dQtyUOMConversionFactor }
+
+dSOOrderQty = (blttship_details_line_update.qty * blttship_details_line_update.disp_qty_conv) / dQtyUOMConversionFactor.
+
+RUN SetOrigLineUpdateValues
+  ( INPUT blttship_details_line_update.item_ptr,
+    INPUT dSOOrderQty,
+    INPUT blttship_details_line_update.order_uom,
+    INPUT blttship_details_line_update.cDimension,
+    INPUT blttship_details_line_update.disp_price,
+    INPUT blttship_details_line_update.disp_price-uom,
+    INPUT blttship_details_line_update.ext_price ).
+
+/* kem - set all the fill ins */
+
+END PROCEDURE.
+  
+/* _UIB-CODE-BLOCK-END */
+&ANALYZE-RESUME
+
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE inv_affect wn-ship_details
 PROCEDURE inv_affect :
 /*------------------------------------------------------------------------------
   Purpose:  called from usodetal.w
@@ -7709,8 +7299,9 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE LeaveExtPrice wn-ship_details 
-PROCEDURE LeaveExtPrice :
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE LeaveExtPrice wn-ship_details
+PROCEDURE LeaveExtPrice:
 /*------------------------------------------------------------------------------
  Purpose:
  Notes:
@@ -7718,108 +7309,46 @@ PROCEDURE LeaveExtPrice :
   
   DEFINE INPUT PARAMETER ipdNewExtPrice     AS DECIMAL    NO-UNDO.
   
-  DEFINE VARIABLE dOrigExtPrice             AS DECIMAL    NO-UNDO.
   DEFINE VARIABLE lContinue                 AS LOGICAL    NO-UNDO.
-    
-  dOrigExtPrice  = goSODetailModel:GetOrigExtPrice().
   
-  IF ABSOLUTE( dOrigExtPrice - ipdNewExtPrice ) < {&gdMinQtyDealtWith} THEN 
-    RETURN.
-    
-  EMPTY TEMP-TABLE ttErrorMsg.
+  goSODetailPresenter:LeaveExtPrice
+    ( INPUT ipdNewExtPrice,
+     OUTPUT lContinue ).
   
-  goSODetailModel:ProcessOrigTables( INPUT "LOAD" ).
-  
-  goSODetailModel:LeaveExtPrice
-    ( INPUT         ipdNewExtPrice,
-      INPUT-OUTPUT  DATASET dsErrorMsg,
-            OUTPUT  lContinue ).
-              
-  IF NOT ProcessMessages( INPUT "DisplayOnly" ) OR
-     lContinue = NO THEN
-  DO:
-    goSODetailModel:ProcessOrigTables( INPUT "DUMP" ).
-    RETURN.
-  END.
-  
-  goSODetailModel:LeavePrice2
-    ( INPUT-OUTPUT  DATASET dsErrorMsg,
-            OUTPUT  lContinue ).
-            
-  IF NOT ProcessMessages( INPUT "DisplayOnly" ) OR
-     lContinue = NO THEN
-  DO:
-    goSODetailModel:ProcessOrigTables( INPUT "DUMP" ).
-    RETURN.
-  END.
-  
-  RUN RefreshLineEdit.
+  IF lContinue THEN 
+    RUN RefreshLineUpdate.
 
 END PROCEDURE.
-
+  
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE LeavePrice wn-ship_details 
-PROCEDURE LeavePrice :
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE LeavePrice wn-ship_details
+PROCEDURE LeavePrice:
 /*------------------------------------------------------------------------------
  Purpose:
  Notes:
 ------------------------------------------------------------------------------*/
   DEFINE INPUT PARAMETER ipdNewPrice      AS DECIMAL    NO-UNDO.
   
-  DEFINE VARIABLE lContinueLoop           AS LOGICAL    NO-UNDO INIT TRUE.
-  DEFINE VARIABLE cCurrentStep            AS CHARACTER  NO-UNDO.
-  DEFINE VARIABLE cNextStep               AS CHARACTER  NO-UNDO.
-  DEFINE VARIABLE lFinished               AS LOGICAL    NO-UNDO.
-  
-  DEFINE VARIABLE dOrigPrice              AS DECIMAL    NO-UNDO.
-  DEFINE VARIABLE dNewPrice               AS DECIMAL    NO-UNDO.
-  DEFINE VARIABLE dNewPriceInPriceUOM     AS DECIMAL    NO-UNDO.
+  DEFINE VARIABLE lContinue   AS LOGICAL    NO-UNDO.
 
-  ASSIGN
-    dOrigPrice  = goSODetailModel:GetOrigPrice()
-    dNewPrice   = ipdNewPrice.
-    
-  IF ABSOLUTE( dOrigPrice - dNewPrice ) < {&gdMinQtyDealtWith} THEN 
-    RETURN.
+  goSODetailPresenter:LeavePrice
+    ( INPUT ipdNewPrice,
+     OUTPUT lContinue ).
   
-  goSODetailModel:ProcessOrigTables( INPUT "LOAD" ).
-  
-  LeavePriceLoop:
-  DO WHILE lContinueLoop:
-    
-    goSODetailModel:LeavePrice
-      ( INPUT         cCurrentStep,
-        INPUT-OUTPUT  dNewPrice,
-        INPUT-OUTPUT  dNewPriceInPriceUOM,
-        INPUT-OUTPUT  DATASET dsErrorMsg,
-              OUTPUT  lContinueLoop,
-              OUTPUT  cNextStep ).
-    
-    IF NOT ProcessMessages( INPUT "DisplayOnly" ) OR
-       lContinueLoop = NO THEN
-    DO:
-      goSODetailModel:ProcessOrigTables( INPUT "DUMP" ).
-      LEAVE LeavePriceLoop.
-    END.
-  
-    IF cNextStep = "" THEN
-      lContinueLoop = NO.
-    ELSE
-      ASSIGN
-        cCurrentStep = cNextStep.     
-  END.
-  
-  RUN RefreshLineEdit.
+  IF lContinue THEN
+    RUN RefreshLineUpdate.
   
 END PROCEDURE.
-
+  
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE LoadLineEdit wn-ship_details 
-PROCEDURE LoadLineEdit :
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE LoadLineUpdate wn-ship_details
+PROCEDURE LoadLineUpdate:
 /*------------------------------------------------------------------------------
  Purpose:
  Notes:
@@ -7828,154 +7357,107 @@ PROCEDURE LoadLineEdit :
   DEFINE VARIABLE lDisableFields    AS LOGICAL    NO-UNDO.
   DEFINE VARIABLE lContinue         AS LOGICAL    NO-UNDO.
     
-  IF NOT AVAILABLE temp-ship-details THEN
-    FIND FIRST temp-ship-details WHERE
-               RECID(temp-ship-details) = grCurrentRECID
+  IF NOT AVAILABLE blttship_details_line_update THEN
+    FIND FIRST blttship_details_line_update WHERE
+               RECID(blttship_details_line_update) = grLineUpdateRECID
                NO-LOCK NO-ERROR.
   
-  IF FRAME fr-details:VISIBLE AND 
-    (NOT AVAILABLE(temp-ship-details) OR 
-     grCurrentRECID = grOrigRECID)  THEN               
+  IF NOT AVAILABLE(blttship_details_line_update) THEN
+  DO:
+    MESSAGE "KEM" VIEW-AS ALERT-BOX.
+    RETURN.
+  END.     
+
+  IF NOT AVAILABLE(blttship_details_line_update)  OR 
+     grLineUpdateRECID = grOrigLineUpdateRECID    THEN               
     RETURN. 
    
-  grOrigRECID = grCurrentRECID.
+  ASSIGN 
+    giLineUpdateRow       = br-shipdetails:FOCUSED-ROW IN FRAME {&FRAME-NAME}
+    grOrigLineUpdateRECID = grLineUpdateRECID
+    giLineUpdateSequence  = blttship_details_line_update.sequence.
   
-
   /* rules apply to all items */
   IF temp-ship-details.lSOWOParentItem        OR 
      temp-ship-details.lMultipleOpenShipments THEN 
     lDisableFields = TRUE. 
     
-  RUN LoadLineEditPricingFields( INPUT lDisableFields ).
+  RUN LoadLineUpdatePricingFields( INPUT lDisableFields ).
   
-  IF {invitemtype.i &cItemType       = temp-ship-details.item_type
+  IF {invitemtype.i &cItemType       = blttship_details_line_update.item_type
                     &cProcessContext = "PcValidUOM" } THEN
     glAllowPCRefUOM = TRUE.
 
-  IF {invitemtype.i &cItemType       = temp-ship-details.item_type
+  IF {invitemtype.i &cItemType       = blttship_details_line_update.item_type
                     &cProcessContext = "UnitValidUOM" } THEN
     glAllowUnitUOM = TRUE.
     
-  IF NOT VALID-OBJECT(goSODetailModel) THEN 
-    goSODetailModel = NEW so.SODetailModel().
+  IF NOT VALID-OBJECT(goSODetailPresenter) THEN 
+    goSODetailPresenter = NEW so.SODetailPresenter( INPUT giSOID,
+                                                    INPUT TRUE,
+                                                    INPUT THIS-PROCEDURE ).
   
   ASSIGN 
-    goSODetailModel:SOID                = giSOID
-    goSODetailModel:UseStagedQuantity   = TRUE.
+    goSODetailPresenter:SOID = giSOID.
   
-  goSODetailModel:InitialShipmentDetail
-    ( INPUT temp-ship-details.rSODetailRecid,
-      INPUT-OUTPUT DATASET dsErrorMsg, 
+  goSODetailPresenter:InitialDetailDisplay
+    ( INPUT blttship_details_line_update.rSODetailRecid,
       OUTPUT lContinue ).
   
-  IF NOT ProcessMessages( INPUT "DisplayOnly" ) OR
-     lContinue = NO THEN
-  DO:
+  IF lContinue = NO THEN
     RETURN.
-  END.
   
-  IF FRAME fr-details:HIDDEN = TRUE THEN   
-  DO:
-    br-shipdetails:HEIGHT IN FRAME {&frame-name} = 6.43.
-    FRAME fr-details:HIDDEN = FALSE .
-
-    FRAME fr-details:MOVE-TO-TOP ().
-  END.
-  
-  assign 
-    fiItem = temp-ship-details.item 
-    fiQty  = DECIMAL(temp-ship-details.dDisplayQty)
-    btUOMDetails:LABEL IN FRAME fr-details = temp-ship-details.cDisplayUOM
-    fiPrice = temp-ship-details.disp_price
-    btPriceUOMDetails:LABEL IN FRAME fr-details = temp-ship-details.disp_price-uom
-    fiExtPrice = temp-ship-details.ext_price
-    gchDimensionsComboBox:TEXT = temp-ship-details.cDimension
-  .
-    
-  DISPLAY 
-    fiItem
-    fiQty         
-    fiPrice       
-    fiExtPrice
-    btPriceUOMDetails
-    btUOMDetails
-    btCancelDetails
-    btSaveDetails
-    btSaveNextDetails
-    bt-locate
-  WITH FRAME fr-details.
-      
-  IF lDisableFields THEN 
-    DISABLE ALL WITH FRAME fr-details .
-  ELSE   
-  DO WITH FRAME fr-details: 
-    FRAME fr-details:SENSITIVE = TRUE.
-    
-    ASSIGN 
-      fiItem:SENSITIVE  = TRUE 
-      fiQty:SENSITIVE  = TRUE         
-      fiPrice:SENSITIVE  = TRUE       
-      fiExtPrice:SENSITIVE  = TRUE
-      btPriceUOMDetails:SENSITIVE = TRUE  /* = glAllowPCRefUOM*/
-      btUOMDetails:SENSITIVE  = TRUE
-      btCancelDetails:SENSITIVE  = TRUE
-      btSaveDetails:SENSITIVE  = TRUE
-      btSaveNextDetails:SENSITIVE  = TRUE
-      bt-locate:SENSITIVE  = TRUE
-    .        
-    
-    IF fiQty:SENSITIVE THEN
-    DO:
-      APPLY "ENTRY" TO fiQty IN FRAME fr-details.
-      RETURN NO-APPLY.
-    END.
-  END.  
+  RUN InitialLineUpdateFields.
   
 END PROCEDURE.
-
+  
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE LoadLineEditPricingFields wn-ship_details 
-PROCEDURE LoadLineEditPricingFields :
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE LoadLineUpdatePricingFields wn-ship_details
+PROCEDURE LoadLineUpdatePricingFields:
 /*------------------------------------------------------------------------------
  Purpose:
  Notes:
 ------------------------------------------------------------------------------*/
   DEFINE INPUT PARAMETER iplDisablePricingFields    AS LOGICAL  NO-UNDO.
   
-  DO WITH FRAME fr-details:    
+  /* need to replace grid fields with new fill ins/buttons/drop-downs in line edit frame */
+    
+  ASSIGN 
+    temp-ship-details.disp_price    :READ-ONLY IN BROWSE br-shipdetails = iplDisablePricingFields
+    temp-ship-details.disp_price-uom:READ-ONLY IN BROWSE br-shipdetails = iplDisablePricingFields
+    temp-ship-details.ext_price     :READ-ONLY IN BROWSE br-shipdetails = iplDisablePricingFields.
+  
+  /* pricing specific rules */    
+  IF NOT iplDisablePricingFields THEN
+  DO:
+    IF NOT PricingIsEditableForDetail() THEN 
+    DO:
       ASSIGN 
-        fiPrice:READ-ONLY = iplDisablePricingFields
-        btPriceUOMDetails:SENSITIVE = iplDisablePricingFields
-        fiExtPrice:READ-ONLY = iplDisablePricingFields.
-      
-      /* pricing specific rules */    
-      IF NOT iplDisablePricingFields THEN
-      DO:
-        IF NOT PricingIsEditableForDetail() THEN 
-          ASSIGN 
-            fiPrice:READ-ONLY = TRUE 
-            btPriceUOMDetails:SENSITIVE = FALSE 
-            fiExtPrice:READ-ONLY = TRUE.
-        ELSE 
-        DO:
-          IF NOT goSecurityManager:IsActionGranted("Sales Orders-Quotes","comtstat","override_price_staging") THEN 
-            ASSIGN 
-              fiPrice:READ-ONLY = TRUE 
-              btPriceUOMDetails:SENSITIVE = FALSE.
-          IF NOT goSecurityManager:IsActionGranted("Sales Orders-Quotes","comtstat","enter_extended_price_staging") THEN 
-            fiExtPrice:READ-ONLY = TRUE.
-        END. 
-      END.
+        temp-ship-details.disp_price    :READ-ONLY IN BROWSE br-shipdetails = TRUE 
+        temp-ship-details.disp_price-uom:READ-ONLY IN BROWSE br-shipdetails = TRUE
+        temp-ship-details.ext_price     :READ-ONLY IN BROWSE br-shipdetails = TRUE.
+    END. 
+    ELSE 
+    DO:
+      IF NOT goSecurityManager:IsActionGranted("Sales Orders-Quotes","comtstat","override_price_staging") THEN 
+        ASSIGN 
+          temp-ship-details.disp_price    :READ-ONLY IN BROWSE br-shipdetails = TRUE 
+          temp-ship-details.disp_price-uom:READ-ONLY IN BROWSE br-shipdetails = TRUE.
+      IF NOT goSecurityManager:IsActionGranted("Sales Orders-Quotes","comtstat","enter_extended_price_staging") THEN 
+        temp-ship-details.ext_price:READ-ONLY IN BROWSE br-shipdetails = TRUE.
+    END. 
   END.
+  
 END PROCEDURE.
-
+  
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE LoadSoParameters wn-ship_details 
-PROCEDURE LoadSoParameters :
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE LoadSoParameters wn-ship_details
+PROCEDURE LoadSoParameters:
 /*------------------------------------------------------------------------------
  Purpose:
  Notes:
@@ -7991,11 +7473,12 @@ PROCEDURE LoadSoParameters :
   FIND FIRST ttParamSO NO-LOCK NO-ERROR.
 
 END PROCEDURE.
-
+  
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE modifications wn-ship_details 
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE modifications wn-ship_details
 PROCEDURE modifications :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -8230,7 +7713,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE modifications2 wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE modifications2 wn-ship_details
 PROCEDURE modifications2 :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -8510,7 +7993,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE modifications3 wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE modifications3 wn-ship_details
 PROCEDURE modifications3 :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -8605,15 +8088,13 @@ PROCEDURE modifications3 :
   06/20/23 KAE  138136  Removed old security comments
   10/10/23 KAE  139712  Added inputs to support view only
   11/08/23 NAD  140069  Added input to shipddsp.w for view only
-  01/12/24 KAE  141246  Added logic to allow for line update mode 
-  01/16/24 MIN  141249  Staging Details UI Changes for line edit mode
 */
 END PROCEDURE.
 
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE modify-temp wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE modify-temp wn-ship_details
 PROCEDURE modify-temp :
 /* -----------------------------------------------------------
   Purpose:  Open query associated with shipments/item_reserved browser
@@ -8901,7 +8382,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE msg_attach wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE msg_attach wn-ship_details
 PROCEDURE msg_attach :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -8916,7 +8397,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE open-query wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE open-query wn-ship_details
 PROCEDURE open-query :
 /* -----------------------------------------------------------
   Purpose:
@@ -8983,7 +8464,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE pos_tally_calc_bt wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE pos_tally_calc_bt wn-ship_details
 PROCEDURE pos_tally_calc_bt :
 /* -----------------------------------------------------------
   Purpose:
@@ -9041,7 +8522,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE printOptions wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE printOptions wn-ship_details
 PROCEDURE printOptions :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -9064,7 +8545,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ProcessPodAccept wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ProcessPodAccept wn-ship_details
 PROCEDURE ProcessPodAccept :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -9273,8 +8754,9 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE RefreshLineEdit wn-ship_details 
-PROCEDURE RefreshLineEdit :
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE RefreshLineUpdate wn-ship_details
+PROCEDURE RefreshLineUpdate:
 /*------------------------------------------------------------------------------
  Purpose:
  Notes:
@@ -9284,26 +8766,30 @@ PROCEDURE RefreshLineEdit :
   DEFINE VARIABLE cPriceUOM           AS CHARACTER  NO-UNDO.
   DEFINE VARIABLE dExtendedPrice      AS DECIMAL    NO-UNDO.
   
-  goSODetailModel:RefreshDetail
+  goSODetailPresenter:GetDetailFields
     ( OUTPUT dDisplayPrice,
       OUTPUT cPriceUOM,
       OUTPUT dExtendedPrice ).
-      
-  DO WITH FRAME fr-details:
-    ASSIGN   
-      fiPrice:SCREEN-VALUE    = STRING (dDisplayPrice)
-      btPriceUOMDetails:LABEL = cPriceUOM
-      fiExtPrice:SCREEN-VALUE = STRING (dExtendedPrice).
+  
+  /* TODO - change to fill ins, buttons, combo box etc. in line edit section */
+  ASSIGN 
+    temp-ship-details.price      = dDisplayPrice
+    temp-ship-details.price-uom  = cPriceUOM
+    temp-ship-details.ext_price  = dExtendedPrice.
+     
+  DO WITH FRAME {&FRAME-NAME}:
+    RUN open-query.
   END.
- 
+  
   EMPTY TEMP-TABLE ttErrorMsg.
 
 END PROCEDURE.
-
+  
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ResizeWindow wn-ship_details 
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ResizeWindow wn-ship_details
 PROCEDURE ResizeWindow :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -9368,7 +8854,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE return-order-num wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE return-order-num wn-ship_details
 PROCEDURE return-order-num :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -9384,7 +8870,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ReturnFocus wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ReturnFocus wn-ship_details
 PROCEDURE ReturnFocus :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -9408,7 +8894,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ReturnFromOrdChrgCstDtl wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ReturnFromOrdChrgCstDtl wn-ship_details
 PROCEDURE ReturnFromOrdChrgCstDtl :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -9439,7 +8925,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE returnfromsishipdetailupd wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE returnfromsishipdetailupd wn-ship_details
 PROCEDURE returnfromsishipdetailupd :
 /* -----------------------------------------------------------
   Purpose:
@@ -9456,7 +8942,9 @@ DEFINE INPUT PARAMETER iplCompleted             AS  LOGICAL    NO-UNDO.
 DEFINE INPUT PARAMETER DATASET                  FOR dsTempShipDet.
 DEFINE INPUT PARAMETER DATASET                  FOR dsErrorMsg.
 
+DEFINE VARIABLE lContinue                       AS LOGICAL     NO-UNDO.
 DEFINE VARIABLE dDummy                          AS DECIMAL     NO-UNDO.
+DEFINE VARIABLE cNextStep                       AS CHARACTER   NO-UNDO.
 DEFINE VARIABLE lFound                          AS LOGICAL     NO-UNDO.
 DEFINE VARIABLE cItemSysid                      AS CHARACTER   NO-UNDO.
 DEFINE VARIABLE iItemPtr                        AS INTEGER     NO-UNDO.
@@ -9468,7 +8956,6 @@ DEFINE VARIABLE lForceAutoHndl                  AS LOGICAL     NO-UNDO.
 
 DEFINE BUFFER   bl-temp-ship-details FOR temp-ship-details.
 DEFINE BUFFER   bfTempShip           FOR temp-ship-details.
-
 
 DO WITH FRAME frExplShip:
 
@@ -9490,6 +8977,18 @@ DO WITH FRAME frExplShip:
 
   IF iplCompleted THEN
   DO:
+    IF glSaveLineUpdateChanges THEN 
+    DO:
+      RUN SaveSODetail
+        ( INPUT gcNextSaveStep,
+         OUTPUT cNextStep,
+         OUTPUT lContinue ).    
+             
+      ASSIGN 
+        glSaveLineUpdateChanges = FALSE
+        gcNextSaveStep          = "".
+    END.
+      
     RUN sostat.p ON SERVER g-AppSrvr
       (INPUT  temp-ship-details.so_id_sysid,
        INPUT  temp-ship-details.so_id,
@@ -9638,6 +9137,15 @@ DO WITH FRAME frExplShip:
   END.
   ELSE
   DO:
+    IF glSaveLineUpdateChanges THEN 
+    DO:
+      goSODetailPresenter:ProcessOrigTables( INPUT "DUMP" ).
+      
+      ASSIGN 
+        glSaveLineUpdateChanges = FALSE
+        gcNextSaveStep            = "".
+    END.
+    
     IF TRIM(gcPodAdjustmentGUID) = "" THEN
     DO:
       ASSIGN
@@ -9688,7 +9196,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ReturnFromUsodetal wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ReturnFromUsodetal wn-ship_details
 PROCEDURE ReturnFromUsodetal :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -9782,7 +9290,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE runBtDispatch wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE runBtDispatch wn-ship_details
 PROCEDURE runBtDispatch :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -9844,7 +9352,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE runSave wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE runSave wn-ship_details
 PROCEDURE runSave :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -9892,6 +9400,8 @@ PROCEDURE runSave :
       RETURN.
     END.
   END.
+  
+  RUN SaveLineUpdateChanges( INPUT TRUE ).
 
   /* give warning that tally doesn't match quantity specified to ship */
   FOR EACH temp-ship-details NO-LOCK:
@@ -10133,7 +9643,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE RunUpdateStatus wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE RunUpdateStatus wn-ship_details
 PROCEDURE RunUpdateStatus :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -10255,7 +9765,92 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE SetDriverFillIn wn-ship_details 
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE SaveLineUpdateChanges wn-ship_details
+PROCEDURE SaveLineUpdateChanges:
+/*------------------------------------------------------------------------------
+ Purpose:
+ Notes:
+------------------------------------------------------------------------------*/
+  DEFINE INPUT PARAMETER iplHeaderSave      AS LOGICAL    NO-UNDO.
+  
+  DEFINE VARIABLE dShipmentQty    AS DECIMAL    NO-UNDO.
+  DEFINE VARIABLE lContinue       AS LOGICAL    NO-UNDO.
+  
+  IF NOT glLineUpdateMode THEN
+    RETURN.
+    
+  IF giLineUpdateSequence = 0 THEN 
+  DO:
+    IF NOT iplHeaderSave THEN
+      RUN sysinfok.p
+        ( INPUT "select_rows",
+          INPUT "update" ).
+    RETURN NO-APPLY.
+  END.
+  
+  glSaveLineUpdateChanges = UnsavedLineUpdateChanges
+                              ( INPUT gcSOSysid,
+                                INPUT giSOID,
+                                INPUT giShipNum,
+                                INPUT giLineUpdateSequence ).
+  
+  dShipmentQty = DECIMAL(temp-ship-details.dDisplayQty:SCREEN-VALUE IN BROWSE br-shipdetails). // kem - need to change to fill in
+  
+  IF NOT glSaveLineUpdateChanges AND 
+     ROUND(dShipmentQty,4) = ROUND(gdDetailTallyQty,4) THEN 
+    RETURN.
+                                                      
+  goSODetailPresenter:ProcessOrigTables( INPUT "LOAD" ).
+  
+  RUN SaveSODetail
+    ( INPUT "",
+     OUTPUT gcNextSaveStep,
+     OUTPUT lContinue ).
+   
+  /* from staging should stop at step 12 so quantity update can complete first */        
+  IF NOT lContinue              OR 
+     gcNextSaveStep <> "Step12" THEN 
+    RETURN. 
+    
+  RUN UpdateShipmentQty
+    ( INPUT grLineUpdateRECID,
+      INPUT giLineUpdateRow,
+      INPUT FALSE,
+      INPUT TRUE,
+      INPUT-OUTPUT dShipmentQty ).   
+        
+  RUN ClearLineUpdate.
+    
+END PROCEDURE.
+  
+/* _UIB-CODE-BLOCK-END */
+&ANALYZE-RESUME
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE SaveSODetail wn-ship_details
+PROCEDURE SaveSODetail:
+/*------------------------------------------------------------------------------
+ Purpose:
+ Notes:
+------------------------------------------------------------------------------*/
+  DEFINE INPUT  PARAMETER ipcCurrentStep      AS CHARACTER    NO-UNDO.
+  DEFINE OUTPUT PARAMETER opcNextStep         AS CHARACTER    NO-UNDO.
+  DEFINE OUTPUT PARAMETER oplContinue         AS LOGICAL      NO-UNDO INIT TRUE.
+ 
+  goSODetailPresenter:SaveDetail
+    ( INPUT "Staging",
+      INPUT ipcCurrentStep,
+      INPUT giShipNum,
+     OUTPUT opcNextStep,
+     OUTPUT oplContinue ).
+  
+END PROCEDURE.
+  
+/* _UIB-CODE-BLOCK-END */
+&ANALYZE-RESUME
+
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE SetDriverFillIn wn-ship_details
 PROCEDURE SetDriverFillIn :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -10285,8 +9880,9 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE SetGridAndDetailView wn-ship_details 
-PROCEDURE SetGridAndDetailView :
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE SetGridAndDetailView wn-ship_details
+PROCEDURE SetGridAndDetailView:
 /*------------------------------------------------------------------------------
  Purpose:
  Notes:
@@ -10296,8 +9892,7 @@ PROCEDURE SetGridAndDetailView :
   
   DO WITH FRAME {&FRAME-NAME}:
     
-    IF ipcMode = "Display" OR 
-       glLineUpdateMode THEN 
+    IF ipcMode = "Display" THEN 
       ASSIGN
         temp-ship-details.dDisplayQty:READ-ONLY      IN BROWSE br-shipdetails = TRUE
         temp-ship-details.dDisplayQty:COLUMN-BGCOLOR IN BROWSE br-shipdetails = ?.
@@ -10315,11 +9910,43 @@ PROCEDURE SetGridAndDetailView :
   
 
 END PROCEDURE.
-
+  
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE SetSelectedRows wn-ship_details 
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE SetOrigLineUpdateValues wn-ship_details
+PROCEDURE SetOrigLineUpdateValues:
+/*------------------------------------------------------------------------------
+ Purpose:
+ Notes:
+------------------------------------------------------------------------------*/
+DEFINE INPUT PARAMETER ipiItemPtr         AS INTEGER    NO-UNDO.
+DEFINE INPUT PARAMETER ipdOrderQty        AS DECIMAL    NO-UNDO.
+DEFINE INPUT PARAMETER ipcOrderQtyUOM     AS CHARACTER  NO-UNDO.
+DEFINE INPUT PARAMETER ipcDimension       AS CHARACTER  NO-UNDO.
+DEFINE INPUT PARAMETER ipdPrice           AS DECIMAL    NO-UNDO.
+DEFINE INPUT PARAMETER ipcPriceUOM        AS CHARACTER  NO-UNDO.
+DEFINE INPUT PARAMETER ipdExtPrice        AS DECIMAL    NO-UNDO.
+
+  
+ASSIGN
+  giOrigLineUpdateItemPtr   = ipiItemPtr
+  gdOrigLineUpdateQty       = ipdOrderQty
+  gcOrigLineUpdateUOM       = ipcOrderQtyUOM
+  gcOrigLineUpdateDimension = ipcDimension
+  gdOrigLineUpdatePrice     = ipdPrice
+  gcOrigLineUpdatePriceUOM  = ipcPriceUOM
+  gdOrigLineUpdateExtPrice  = ipdExtPrice.
+  
+END PROCEDURE.
+  
+/* _UIB-CODE-BLOCK-END */
+&ANALYZE-RESUME
+
+
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE SetSelectedRows wn-ship_details
 PROCEDURE SetSelectedRows :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -10362,7 +9989,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE SetSensitivity wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE SetSensitivity wn-ship_details
 PROCEDURE SetSensitivity :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -10383,7 +10010,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE set_message_bmp wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE set_message_bmp wn-ship_details
 PROCEDURE set_message_bmp :
 /*------------------------------------------------------------------------------
   Purpose: Set the bitmap on message button if there is a message
@@ -10439,7 +10066,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE set_screen_value wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE set_screen_value wn-ship_details
 PROCEDURE set_screen_value :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -10477,7 +10104,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE set_window_profile wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE set_window_profile wn-ship_details
 PROCEDURE set_window_profile :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -10505,7 +10132,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ShutDownWindow wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ShutDownWindow wn-ship_details
 PROCEDURE ShutDownWindow :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -10878,7 +10505,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE SpecifyTags wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE SpecifyTags wn-ship_details
 PROCEDURE SpecifyTags :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -10940,7 +10567,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE toggle_cost_visible wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE toggle_cost_visible wn-ship_details
 PROCEDURE toggle_cost_visible :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -11012,7 +10639,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE UncompleteWo wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE UncompleteWo wn-ship_details
 PROCEDURE UncompleteWo :
 /*------------------------------------------------------------------------------
   Purpose:     Takes care of updating the actual shipment-detail record and
@@ -11096,7 +10723,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE UpdateMessagesInBrowser wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE UpdateMessagesInBrowser wn-ship_details
 PROCEDURE UpdateMessagesInBrowser :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -11136,7 +10763,149 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ValidateDriver wn-ship_details 
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE UpdateShipmentQty wn-ship_details
+PROCEDURE UpdateShipmentQty:
+/*------------------------------------------------------------------------------
+ Purpose:
+ Notes:
+------------------------------------------------------------------------------*/
+  DEFINE INPUT        PARAMETER  iprCurrentGridRecid     AS RECID      NO-UNDO.
+  DEFINE INPUT        PARAMETER  ipiRow                  AS INTEGER    NO-UNDO.
+  DEFINE INPUT        PARAMETER  iplSelectNextRow        AS LOGICAL    NO-UNDO.
+  DEFINE INPUT        PARAMETER  iplLineUpdateMode       AS LOGICAL    NO-UNDO.
+  DEFINE INPUT-OUTPUT PARAMETER  iopdNewShipmentQty      AS DECIMAL    NO-UNDO.
+  
+  DEFINE VARIABLE iRow                   AS INTEGER     NO-UNDO INIT 1.
+  DEFINE VARIABLE rShipmentDetailRecid   AS RECID       NO-UNDO.
+  DEFINE VARIABLE rNextRowRecid          AS RECID       NO-UNDO.
+  DEFINE VARIABLE lLastRow               AS LOGICAL     NO-UNDO.
+  DEFINE VARIABLE dPulledQty             AS DECIMAL     NO-UNDO.
+  DEFINE VARIABLE dDummy                 AS DECIMAL     NO-UNDO.
+  DEFINE VARIABLE lCompleted             AS LOGICAL     NO-UNDO INIT FALSE.
+
+  DEFINE BUFFER   bfTempShip           FOR temp-ship-details.
+  DEFINE BUFFER   bltemp-ship-details  FOR temp-ship-details.
+  
+  FIND FIRST bltemp-ship-details WHERE 
+             RECID(bltemp-ship-details) = iprCurrentGridRecid
+             NO-LOCK NO-ERROR.
+  
+  IF NOT AVAILABLE(bltemp-ship-details) THEN 
+    RETURN.
+    
+  rShipmentDetailRecid = bltemp-ship-details.rec.
+
+  IF bltemp-ship-details.type = "CM" THEN
+  DO:
+    IF ROUND(DECIMAL(iopdNewShipmentQty),4) > 0    THEN
+      iopdNewShipmentQty = ABS(iopdNewShipmentQty) * -1.
+  END.
+  ELSE
+  DO:
+    IF ROUND(DECIMAL(iopdNewShipmentQty),4) < 0 THEN
+      iopdNewShipmentQty = ABS(iopdNewShipmentQty).
+  END.
+  
+  /* kem
+  IF iplLineUpdateMode THEN 
+    temp-ship-details.disp_qty_conv? = . */
+         
+  IF NOT iplSelectNextRow               OR 
+     NUM-RESULTS("br-shipdetails") < 2  THEN
+    rNextRowRecid = ?.
+  ELSE
+  DO:
+    /* set up the next row to display here before we process anything */
+    FIND bfTempShip WHERE
+         bfTempShip.rec = rShipmentDetailRecid
+         NO-LOCK NO-ERROR.
+
+    FIND NEXT bfTempShip NO-LOCK NO-ERROR.
+    IF AVAILABLE bfTempShip THEN
+      rNextRowRecid = bfTempShip.rec.
+    ELSE
+      ASSIGN
+        rNextRowRecid = rShipmentDetailRecid
+        lLastRow      = TRUE.
+  END.
+
+  IF LAST-EVENT:WIDGET-ENTER = bt-delete:HANDLE IN FRAME {&FRAME-NAME} THEN 
+    RETURN.
+  IF LAST-EVENT:WIDGET-ENTER = bt-update_detail:HANDLE IN FRAME {&FRAME-NAME} THEN 
+    RETURN.
+
+  IF ROUND(DECIMAL(iopdNewShipmentQty),4) = ROUND(gdDetailTallyQty,4) THEN        
+  DO:
+    IF iplLineUpdateMode THEN 
+      RUN returnfromsishipdetailupd
+        ( INPUT rShipmentDetailRecid,
+          INPUT rNextRowRecid,
+          INPUT ipiRow,
+          INPUT lLastRow,
+          INPUT gcTallyMsg,
+          INPUT iopdNewShipmentQty,
+          INPUT TRUE, /* treat like this was completed */
+          INPUT DATASET dsTempShipDet,
+          INPUT DATASET dsErrorMsg ).
+        
+    RETURN.
+  END.
+  
+  IF NUM-RESULTS("br-shipdetails") > 0 AND
+     br-shipdetails:NUM-SELECTED-ROWS IN FRAME {&FRAME-NAME} = 1 THEN
+  DO:
+    {waiton.i}
+
+    IF NOT AVAILABLE bltemp-ship-details THEN
+      FIND FIRST bltemp-ship-details WHERE
+                 bltemp-ship-details.rec = rShipmentDetailRecid
+                 NO-LOCK NO-ERROR.
+
+    ASSIGN
+      glByPassEntryTrigger2 = YES.
+
+    EMPTY TEMP-TABLE ttTrackSelected NO-ERROR.
+
+    /*DO NOT run on appserver as this displays windows/messages*/
+    RUN so/sishipdetailupd.p PERSISTENT
+      ( INPUT gscSessionContextID,
+        INPUT CURRENT-WINDOW,
+        INPUT THIS-PROCEDURE,
+        INPUT ?,
+        INPUT "explship",
+        INPUT YES, /*Allow UI*/
+        INPUT bltemp-ship-details.so_id_sysid,
+        INPUT bltemp-ship-details.so_id,
+        INPUT bltemp-ship-details.sequence,
+        INPUT bltemp-ship-details.ship-num,
+        INPUT g-tally_qty,
+        INPUT gdDetailTallyQty,
+        INPUT iopdNewShipmentQty,
+        INPUT 0, /*WMS Seq*/
+        INPUT rShipmentDetailRecid,
+        INPUT rNextRowRecid,
+        INPUT ipiRow,
+        INPUT lLastRow,
+        INPUT gcTallyMsg,
+        INPUT 0, /*Thickness */
+        INPUT 0, /*Width     */
+        INPUT 0, /*Length    */
+        INPUT 0, /*PieceCount*/
+        INPUT DATASET dsOrigDetailTallyDummy,
+        INPUT DATASET dsTempShipDet ).
+    
+    RETURN NO-APPLY.
+  END. /* num-results */
+
+END PROCEDURE.
+  
+/* _UIB-CODE-BLOCK-END */
+&ANALYZE-RESUME
+
+
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE ValidateDriver wn-ship_details
 PROCEDURE ValidateDriver :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -11193,7 +10962,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE window_sensitive wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE window_sensitive wn-ship_details
 PROCEDURE window_sensitive :
 /*------------------------------------------------------------------------------
   Purpose:
@@ -11220,7 +10989,7 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE xdelete_new_tally wn-ship_details 
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _PROCEDURE xdelete_new_tally wn-ship_details
 PROCEDURE xdelete_new_tally :
 /*------------------------------------------------------------------------------
   Purpose:     get the new/current tally break down for this detail and delete it
@@ -11311,18 +11080,47 @@ END PROCEDURE.
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
 
+
 /* ************************  Function Implementations ***************** */
 
-&ANALYZE-SUSPEND _UIB-CODE-BLOCK _FUNCTION PricingIsEditableForDetail wn-ship_details 
-FUNCTION PricingIsEditableForDetail RETURNS LOGICAL
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _FUNCTION CancelLineUpdateChanges wn-ship_details
+FUNCTION CancelLineUpdateChanges RETURNS LOGICAL 
+  (  ):
+/*------------------------------------------------------------------------------
+ Purpose:
+ Notes:
+------------------------------------------------------------------------------*/
+  DEFINE VARIABLE lCancelChanges    AS LOGICAL    NO-UNDO.
+  
+  IF giLineUpdateSequence <> 0 AND 
+     UnsavedLineUpdateChanges( gcSOSysid, giSOID, giShipNum, giLineUpdateSequence ) THEN 
+    RUN sysinfo.p
+      ( INPUT "modified",
+        INPUT "",
+        INPUT-OUTPUT lCancelChanges ).
+  
+  RETURN lCancelChanges.
+
+END FUNCTION.
+  
+/* _UIB-CODE-BLOCK-END */
+&ANALYZE-RESUME
+
+
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _FUNCTION PricingIsEditableForDetail wn-ship_details
+FUNCTION PricingIsEditableForDetail RETURNS LOGICAL 
   (  ):
 /*------------------------------------------------------------------------------
  Purpose:
  Notes:
 ------------------------------------------------------------------------------*/
   DEFINE VARIABLE lPriceFieldsEditable    AS LOGICAL  NO-UNDO INIT TRUE.
-    
-  IF temp-ship-details.contract_prices_locked THEN
+  
+  IF temp-ship-details.type = "CM" THEN
+    lPriceFieldsEditable = FALSE.   
+  ELSE IF temp-ship-details.contract_prices_locked THEN
     lPriceFieldsEditable = FALSE.
   ELSE IF temp-ship-details.group_id <> "" THEN
   DO:
@@ -11337,7 +11135,44 @@ FUNCTION PricingIsEditableForDetail RETURNS LOGICAL
   RETURN lPriceFieldsEditable.
 
 END FUNCTION.
-
+  
 /* _UIB-CODE-BLOCK-END */
 &ANALYZE-RESUME
+
+&ANALYZE-SUSPEND _UIB-CODE-BLOCK _FUNCTION UnsavedLineUpdateChanges wn-ship_details
+FUNCTION UnsavedLineUpdateChanges RETURNS LOGICAL 
+  ( INPUT ipcSOIDSysid    AS CHARACTER,
+    INPUT ipiSOID         AS INTEGER,
+    INPUT ipiSequence     AS INTEGER,
+    INPUT ipiShipmentNum  AS INTEGER ):
+/*------------------------------------------------------------------------------
+ Purpose:
+ Notes:
+------------------------------------------------------------------------------*/
+  DEFINE VARIABLE lUnsavedChanges   AS LOGICAL  NO-UNDO INIT TRUE. // kem  - change to false
+  
+  DEFINE BUFFER bltemp-ship-details FOR temp-ship-details.
+  
+  FOR FIRST bltemp-ship-details WHERE 
+            bltemp-ship-details.so_id_sysid = ipcSOIDSysid    AND
+            bltemp-ship-details.so_id       = ipiSOID         AND 
+            bltemp-ship-details.sequence    = ipiSequence     AND 
+            bltemp-ship-details.ship-num    = ipiShipmentNum  
+            NO-LOCK:
+    
+    
+    /*
+    IF bltemp-ship-details.dDispPrice <> fiPrice
+    
+    */
+  END. 
+      
+  RETURN lUnsavedChanges.
+
+END FUNCTION.
+  
+/* _UIB-CODE-BLOCK-END */
+&ANALYZE-RESUME
+
+
 
